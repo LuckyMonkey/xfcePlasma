@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+BIN="/home/freezer/.local/opt/xfdesktop-transparent/bin/xfdesktop"
+if pgrep -af "$BIN" >/dev/null 2>&1; then
+  while read -r pid cmd; do
+    case "$cmd" in
+      "$BIN"*) echo "Stopping custom xfdesktop PID $pid"; kill "$pid" ;;
+    esac
+  done < <(pgrep -af "$BIN" || true)
+else
+  echo "No custom xfdesktop process found"
+fi

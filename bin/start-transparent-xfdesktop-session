@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export HOME=/home/freezer
+export USER=freezer
+export LOGNAME=freezer
+export DISPLAY=${DISPLAY:-:0.0}
+export XAUTHORITY=/home/freezer/.Xauthority
+export XDG_RUNTIME_DIR=/run/user/1000
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+export NO_AT_BRIDGE=1
+
+LOG_DIR="/home/freezer/.cache/xfcePlasma/logs"
+mkdir -p "$LOG_DIR"
+
+xfconf-query -c xfwm4 -p /general/use_compositing -s false
+if ! pgrep -af '/home/freezer/.local/bin/picom --config /home/freezer/.config/picom/picom.conf' >/dev/null 2>&1; then
+  systemctl --user stop picom-effects.service >/dev/null 2>&1 || true
+  systemctl --user reset-failed picom-effects.service >/dev/null 2>&1 || true
+  systemd-run --user --unit=picom-effects --collect /home/freezer/.local/bin/start-picom-effects >/dev/null
+  sleep 2
+fi
+
+systemctl --user daemon-reload
+systemctl --user restart tie-dye-wallpaper-mvp.service
+
+xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 2
+xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s true
+systemctl --user stop custom-xfdesktop.service >/dev/null 2>&1 || true
+systemctl --user reset-failed custom-xfdesktop.service >/dev/null 2>&1 || true
+systemd-run --user --unit=custom-xfdesktop --collect --setenv=HOME=/home/freezer --setenv=USER=freezer --setenv=LOGNAME=freezer --setenv=DISPLAY=:0.0 --setenv=XAUTHORITY=/home/freezer/.Xauthority --setenv=XDG_RUNTIME_DIR=/run/user/1000 --setenv=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus --setenv=NO_AT_BRIDGE=1 /home/freezer/.local/opt/xfdesktop-transparent/bin/xfdesktop --disable-wm-check >/dev/null

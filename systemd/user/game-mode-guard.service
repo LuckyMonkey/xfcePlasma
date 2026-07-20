@@ -1,0 +1,11 @@
+[Unit]
+Description=Desktop game-mode guard for fullscreen games
+
+[Service]
+Type=simple
+ExecStart=/home/freezer/.local/bin/game-mode-guard
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

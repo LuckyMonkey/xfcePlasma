@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+sleep 8
+pkill -x xwinwrap 2>/dev/null || true
+cd "$HOME/.local/lib/tie-dye-wallpaper"
+exec env __GL_YIELD=USLEEP nice -n 15 ionice -c 3 xwinwrap -b -s -fs -st -sp -ni -nf -ov -fdt -un -- ./tie-dye-wallpaper --wid WID

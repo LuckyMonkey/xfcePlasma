@@ -1,0 +1,16 @@
+[Unit]
+Description=Tie-dye animated wallpaper renderer for transparent xfdesktop MVP
+After=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/freezer/.local/lib/tie-dye-wallpaper
+Environment=DISPLAY=:0.0
+Environment=XAUTHORITY=/home/freezer/.Xauthority
+Environment=__GL_YIELD=USLEEP
+ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 /usr/local/bin/xwinwrap -debug -g 5760x1080+0+0 -b -s -st -sp -ni -nf -ovr -un -- /home/freezer/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper --wid WID
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

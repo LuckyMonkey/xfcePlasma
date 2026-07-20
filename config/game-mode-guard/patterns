@@ -1,0 +1,12 @@
+# One extended regular expression per line. Any matching process enables game mode.
+# Keep this broad enough for games, but avoid Steam client helpers.
+[P]roton.*[.]exe
+[Ww]ine.*[.]exe
+[.]exe($|[[:space:]])
+[Ll]utris
+[Hh]eroic
+[Bb]ottles
+[Gg]amescope
+steam_app_[0-9]+
+SteamLaunch AppId=[0-9]+
+pressure-vessel.*steamapps

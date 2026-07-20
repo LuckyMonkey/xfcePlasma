@@ -1,0 +1,41 @@
+#!/bin/sh
+
+CHANNEL=xfce4-desktop
+DP_BASE=/backdrop/screen0/monitorDP-0/workspace0
+HDMI_BASE=/backdrop/screen0/monitorHDMI-0/workspace0
+
+get_value() {
+    xfconf-query -c "$CHANNEL" -p "$1" 2>/dev/null
+}
+
+set_if_different() {
+    property=$1
+    value=$2
+    current=$(get_value "$property")
+    [ "$current" = "$value" ] || xfconf-query -c "$CHANNEL" -p "$property" -s "$value"
+}
+
+sync_from() {
+    source_base=$1
+    target_base=$2
+    image=$(get_value "$source_base/last-image")
+    [ -n "$image" ] || return
+
+    set_if_different "$source_base/image-style" 6
+    set_if_different "$target_base/image-style" 6
+    set_if_different "$target_base/last-image" "$image"
+}
+
+# Make the current primary-display selection authoritative at startup.
+sync_from "$DP_BASE" "$HDMI_BASE"
+
+xfconf-query -c "$CHANNEL" -m 2>/dev/null | while IFS= read -r event; do
+    case "$event" in
+        *monitorDP-0/workspace0/last-image*)
+            sync_from "$DP_BASE" "$HDMI_BASE"
+            ;;
+        *monitorHDMI-0/workspace0/last-image*)
+            sync_from "$HDMI_BASE" "$DP_BASE"
+            ;;
+    esac
+done

@@ -1,0 +1,62 @@
+#!/bin/sh
+# Keep the 68px transparent Whisker panel above the main panel, except while
+# a real application is fullscreen.
+#
+# xfwm can restack dock windows after panel clicks without changing the
+# _NET_WM_STATE_ABOVE hint. Re-raise the floating panel each pass so the
+# Whisker button does not get pushed behind the regular panel.
+
+lockfile=/tmp/raise-floating-whisker.lock
+exec 9>"$lockfile"
+flock -n 9 || exit 0
+
+find_whisker_panel() {
+    # wmctrl -G fields: id desktop x y width height class host title.
+    wmctrl -l -x -G | awk '
+        $5 >= 68 && $5 <= 70 && $6 >= 68 && $6 <= 70 &&
+        $7 == "xfce4-panel.Xfce4-panel" { print $1; exit }
+    '
+}
+
+find_whisker_menu() {
+    wmctrl -l -x -G | awk '
+        $7 == "wrapper-2.0.Wrapper-2.0" && / Whisker Menu$/ { print $1; exit }
+    '
+}
+
+fullscreen_present() {
+    for id in $(wmctrl -l | awk '{ print $1 }'); do
+        if xprop -id "$id" _NET_WM_STATE 2>/dev/null |
+            grep -q "_NET_WM_STATE_FULLSCREEN"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+last_action=
+while :; do
+    panel_id=$(find_whisker_panel)
+    if [ -n "$panel_id" ]; then
+        if fullscreen_present; then
+            action=remove
+        else
+            action=add
+        fi
+
+        if [ "$action" != "$last_action" ]; then
+            wmctrl -i -r "$panel_id" -b "$action",above
+            last_action=$action
+        fi
+
+        if [ "$action" = add ]; then
+            xdotool windowraise "$panel_id" 2>/dev/null
+            menu_id=$(find_whisker_menu)
+            if [ -n "$menu_id" ]; then
+                wmctrl -i -r "$menu_id" -b add,above
+                xdotool windowraise "$menu_id" 2>/dev/null
+            fi
+        fi
+    fi
+    sleep 0.25
+done

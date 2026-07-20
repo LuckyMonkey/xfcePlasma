@@ -1,0 +1,92 @@
+#!/bin/sh
+# General game-mode desktop guard for Steam/Proton/Wine/native launchers.
+# While a game is running, keep XFWM compositing disabled for smoother fullscreen.
+# When the game exits, restore the full animated transparent desktop stack.
+
+PATTERNS_FILE=${PATTERNS_FILE:-/home/freezer/.config/game-mode-guard/patterns}
+LAUNCH_GRACE_SECONDS=${LAUNCH_GRACE_SECONDS:-8}
+EXIT_GRACE_SECONDS=${EXIT_GRACE_SECONDS:-3}
+POLL_SECONDS=${POLL_SECONDS:-2}
+LOG=${LOG:-/tmp/game-mode-guard.log}
+RESTORE_LOG=${RESTORE_LOG:-/tmp/game-mode-desktop-restore.log}
+
+log() {
+    printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"
+}
+
+game_running() {
+    if [ ! -r "$PATTERNS_FILE" ]; then
+        return 1
+    fi
+
+    while IFS= read -r pattern; do
+        case "$pattern" in
+            ''|'#'*) continue ;;
+        esac
+        if pgrep -af "$pattern" >/dev/null 2>&1; then
+            return 0
+        fi
+    done < "$PATTERNS_FILE"
+
+    return 1
+}
+
+fade_out_for_game() {
+    /home/freezer/.local/bin/game-mode-fade out >/tmp/game-mode-fade.log 2>&1 || true
+}
+
+fade_in_after_game() {
+    /home/freezer/.local/bin/game-mode-fade in >/tmp/game-mode-fade.log 2>&1 || true
+}
+
+enter_game_mode() {
+    log "game detected; waiting ${LAUNCH_GRACE_SECONDS}s before disabling compositor"
+    sleep "$LAUNCH_GRACE_SECONDS"
+    if ! game_running; then
+        log "game exited during launch grace; leaving desktop unchanged"
+        return 1
+    fi
+
+    fade_out_for_game
+    pkill -f '/home/freezer/.local/bin/picom.*picom\.conf' 2>/dev/null || true
+    sleep 1
+    xfconf-query -c xfwm4 -p /general/use_compositing -s false >/dev/null 2>&1 || true
+    log "game mode active"
+    return 0
+}
+
+restore_desktop() {
+    log "game exited; waiting ${EXIT_GRACE_SECONDS}s before restore"
+    sleep "$EXIT_GRACE_SECONDS"
+    if game_running; then
+        log "another game process appeared during exit grace; staying in game mode"
+        return 1
+    fi
+
+    /home/freezer/.local/bin/start-transparent-xfdesktop-session >"$RESTORE_LOG" 2>&1
+    status=$?
+    if [ "$status" -eq 0 ]; then
+        fade_in_after_game
+        log "desktop restored"
+    else
+        log "desktop restore failed with status $status; see $RESTORE_LOG"
+    fi
+    return "$status"
+}
+
+in_game_mode=false
+log "game-mode guard started"
+while :; do
+    if game_running; then
+        if [ "$in_game_mode" = false ]; then
+            if enter_game_mode; then
+                in_game_mode=true
+            fi
+        fi
+    elif [ "$in_game_mode" = true ]; then
+        if restore_desktop; then
+            in_game_mode=false
+        fi
+    fi
+    sleep "$POLL_SECONDS"
+done

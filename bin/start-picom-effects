@@ -1,0 +1,22 @@
+#!/bin/sh
+export HOME=/home/freezer
+export USER=freezer
+export LOGNAME=freezer
+export DISPLAY=${DISPLAY:-:0.0}
+export XAUTHORITY=/home/freezer/.Xauthority
+export XDG_RUNTIME_DIR=/run/user/1000
+export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+export NO_AT_BRIDGE=1
+# XFWM remains the window manager; only its built-in compositor is replaced.
+cleanup() {
+    xfconf-query -c xfwm4 -p /general/use_compositing -s true >/dev/null 2>&1
+}
+trap cleanup EXIT HUP INT TERM
+
+xfconf-query -c xfwm4 -p /general/use_compositing -s false
+sleep 2
+setsid /home/freezer/.local/bin/raise-floating-whisker >/tmp/raise-floating-whisker.log 2>&1 &
+/home/freezer/.local/bin/picom --config /home/freezer/.config/picom/picom.conf
+status=$?
+xfconf-query -c xfwm4 -p /general/use_compositing -s true
+exit "$status"

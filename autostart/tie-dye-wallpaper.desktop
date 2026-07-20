@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=Tie Dye GPU Wallpaper
+Exec=/home/freezer/.local/bin/tie-dye-wallpaper
+Terminal=false
+X-GNOME-Autostart-enabled=false

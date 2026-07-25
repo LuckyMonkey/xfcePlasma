@@ -32,6 +32,10 @@ xfce_plasma_init() {
   XFCE_PLASMA_LIB_DIR=${XFCE_PLASMA_LIB_DIR:-$XFCE_PLASMA_PREFIX/lib/xfce-plasma}
   XFCE_PLASMA_SHADER_DIR=${XFCE_PLASMA_SHADER_DIR:-$XFCE_PLASMA_DATA_DIR/shaders}
   XFCE_PLASMA_USER_SHADER_DIR=${XFCE_PLASMA_USER_SHADER_DIR:-$XFCE_PLASMA_DATA_DIR/user-shaders}
+  # Compatibility path for the currently bundled renderer binary. The audit
+  # found that it reads this legacy state path directly until source parity
+  # work replaces it.
+  XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR=${XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR:-$XFCE_PLASMA_XDG_STATE_HOME/tie-dye-wallpaper}
 
   XFCE_PLASMA_DISPLAY=${DISPLAY:-}
   XFCE_PLASMA_XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
@@ -50,7 +54,8 @@ xfce_plasma_export_session_env() {
 xfce_plasma_mkdirs() {
   mkdir -p "$XFCE_PLASMA_CONFIG_DIR" "$XFCE_PLASMA_DATA_DIR" \
     "$XFCE_PLASMA_STATE_DIR" "$XFCE_PLASMA_CACHE_DIR" \
-    "$XFCE_PLASMA_RUN_DIR" "$XFCE_PLASMA_LOG_DIR"
+    "$XFCE_PLASMA_RUN_DIR" "$XFCE_PLASMA_LOG_DIR" \
+    "$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR"
   chmod 700 "$XFCE_PLASMA_RUN_DIR" 2>/dev/null || true
 }
 

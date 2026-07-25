@@ -1,14 +1,33 @@
 #!/usr/bin/env bash
-set -u
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+    # shellcheck source=../lib/xfce-plasma-common.sh
+    . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+    # shellcheck source=/dev/null
+    . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
 
 RUNTIME=${WALLPAPER_RUNTIME:-$HOME/.local/lib/tie-dye-wallpaper}
 SHADER_DIR=${WALLPAPER_SHADER_DIR:-$RUNTIME/shaders}
-ACTIVE_SHADER=$RUNTIME/shader.fs
-STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/tie-dye-wallpaper
+ACTIVE_SHADER=${WALLPAPER_ACTIVE_SHADER:-$RUNTIME/shader.fs}
+STATE_DIR=${WALLPAPER_STATE_DIR:-$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR}
 STATE_FILE=$STATE_DIR/current-shader
 SERVICE=${WALLPAPER_SERVICE:-tie-dye-wallpaper-mvp.service}
+LOG_FILE=${WALLPAPER_PICKER_LOG:-$XFCE_PLASMA_LOG_DIR/animated-wallpaper-picker.log}
 
-ORDER='tie-dye.fs motion-halftone.fs qr-cube-maze.fs sky-water-wave.fs kaleidoscope-tunnel.fs aurora-ribbons.fs plasma-lava.fs deep-ocean.fs'
+ORDER=(
+    tie-dye.fs
+    motion-halftone.fs
+    qr-cube-maze.fs
+    sky-water-wave.fs
+    kaleidoscope-tunnel.fs
+    aurora-ribbons.fs
+    plasma-lava.fs
+    deep-ocean.fs
+)
 
 label_for() {
     case "$1" in
@@ -26,86 +45,114 @@ notify() {
     command -v notify-send >/dev/null 2>&1 && notify-send "Animated wallpaper" "$1" >/dev/null 2>&1 || true
 }
 
+is_ordered() {
+    local name=$1 item
+    for item in "${ORDER[@]}"; do
+        [ "$item" = "$name" ] && return 0
+    done
+    return 1
+}
+
 available() {
-    for name in $ORDER; do
+    local name
+    for name in "${ORDER[@]}"; do
         [ -f "$SHADER_DIR/$name" ] && printf '%s\n' "$name"
     done
-    find "$SHADER_DIR" -maxdepth 1 -type f -name '*.fs' -printf '%f\n' 2>/dev/null | sort | while read -r name; do
-        case " $ORDER " in *" $name "*) ;; *) printf '%s\n' "$name";; esac
+    find "$SHADER_DIR" -maxdepth 1 -type f -name '*.fs' -printf '%f\n' 2>/dev/null | sort | while IFS= read -r name; do
+        is_ordered "$name" || printf '%s\n' "$name"
     done
 }
 
 current() {
-    if [ -s "$STATE_FILE" ] && [ -f "$SHADER_DIR/$(cat "$STATE_FILE")" ]; then
-        cat "$STATE_FILE"
-    elif cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/tie-dye.fs" 2>/dev/null; then
-        printf 'tie-dye.fs\n'
-    else
-        active_hash=$(sha256sum "$ACTIVE_SHADER" 2>/dev/null | awk '{print $1}')
-        for name in $(available); do
-            [ "$active_hash" = "$(sha256sum "$SHADER_DIR/$name" 2>/dev/null | awk '{print $1}')" ] && { printf '%s\n' "$name"; return; }
-        done
-        printf 'tie-dye.fs\n'
+    local saved active_hash name shader_hash
+    if [ -s "$STATE_FILE" ]; then
+        saved=$(cat "$STATE_FILE")
+        if [ -f "$SHADER_DIR/$saved" ]; then
+            printf '%s\n' "$saved"
+            return
+        fi
     fi
+
+    if cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/tie-dye.fs" 2>/dev/null; then
+        printf 'tie-dye.fs\n'
+        return
+    fi
+
+    active_hash=$(sha256sum "$ACTIVE_SHADER" 2>/dev/null | awk '{print $1}' || true)
+    while IFS= read -r name; do
+        shader_hash=$(sha256sum "$SHADER_DIR/$name" 2>/dev/null | awk '{print $1}' || true)
+        if [ -n "$active_hash" ] && [ "$active_hash" = "$shader_hash" ]; then
+            printf '%s\n' "$name"
+            return
+        fi
+    done < <(available)
+    printf 'tie-dye.fs\n'
 }
 
 select_relative() {
-    direction=$1
+    local direction=$1 cur count index i name
+    local shaders=()
     cur=$(current)
-    set -- $(available)
-    count=$#
+    while IFS= read -r name; do
+        shaders+=("$name")
+    done < <(available)
+    count=${#shaders[@]}
     [ "$count" -gt 0 ] || exit 1
-    i=1
-    index=1
-    for name in "$@"; do
-        [ "$name" = "$cur" ] && index=$i
-        i=$((i + 1))
+
+    index=0
+    for i in "${!shaders[@]}"; do
+        [ "${shaders[$i]}" = "$cur" ] && index=$i
     done
+
     if [ "$direction" = next ]; then
-        index=$((index + 1)); [ "$index" -le "$count" ] || index=1
+        index=$(( (index + 1) % count ))
     else
-        index=$((index - 1)); [ "$index" -ge 1 ] || index=$count
+        index=$(( index - 1 ))
+        [ "$index" -ge 0 ] || index=$((count - 1))
     fi
-    i=1
-    for name in "$@"; do
-        [ "$i" -eq "$index" ] && { printf '%s\n' "$name"; return; }
-        i=$((i + 1))
-    done
+    printf '%s\n' "${shaders[$index]}"
 }
 
 choose_gui() {
+    local cur name label active
+    local rows=()
     cur=$(current)
-    rows=''
-    for name in $(available); do
+    while IFS= read -r name; do
         label=$(label_for "$name")
         if [ "$name" = "$cur" ]; then active=TRUE; else active=FALSE; fi
-        rows="$rows $active '$label' '$name'"
-    done
+        rows+=("$active" "$label" "$name")
+    done < <(available)
+
     if command -v zenity >/dev/null 2>&1; then
-        eval zenity --list --radiolist --title="Animated wallpaper" --text="Choose wallpaper" --column="" --column="Wallpaper" --column="File" --hide-column=3 --print-column=3 $rows 2>/dev/null
+        zenity --list --radiolist --title="Animated wallpaper" --text="Choose wallpaper" \
+            --column="" --column="Wallpaper" --column="File" --hide-column=3 --print-column=3 \
+            "${rows[@]}" 2>/dev/null
     elif command -v rofi >/dev/null 2>&1; then
-        available | while read -r name; do label_for "$name"; printf '\t%s\n' "$name"; done | rofi -dmenu -p "Wallpaper" | awk -F '\t' '{print $2}'
+        available | while IFS= read -r name; do label_for "$name"; printf '\t%s\n' "$name"; done |
+            rofi -dmenu -p "Wallpaper" | awk -F '\t' '{print $2}'
     else
         available
     fi
 }
 
 apply_shader() {
-    name=$1
+    local name=$1 src
     src=$SHADER_DIR/$name
     [ -f "$src" ] || { notify "Missing shader: $name"; exit 1; }
-    mkdir -p "$STATE_DIR"
+    xfce_plasma_mkdirs
+    mkdir -p "$STATE_DIR" "$(dirname "$ACTIVE_SHADER")"
     cp -f "$src" "$ACTIVE_SHADER"
-    printf '%s\n' "$name" > "$STATE_FILE"
-    systemctl --user restart "$SERVICE" >/tmp/animated-wallpaper-picker.log 2>&1 || true
+    xfce_plasma_atomic_write "$STATE_FILE" "$name"
+    systemctl --user restart "$SERVICE" >"$LOG_FILE" 2>&1 || true
     sleep 1
-    systemctl --user restart xfdesktop-transparent.service >>/tmp/animated-wallpaper-picker.log 2>&1 || true
+    systemctl --user restart xfdesktop-transparent.service >>"$LOG_FILE" 2>&1 || true
     notify "$(label_for "$name")"
 }
 
 case "${1:-pick}" in
     next|--next) choice=$(select_relative next);;
     prev|previous|--prev|--previous) choice=$(select_relative prev);;
+    set|--set) shift; choice=${1:-};;
     list|--list) available; exit 0;;
     current|--current) current; exit 0;;
     pick|--pick) choice=$(choose_gui);;

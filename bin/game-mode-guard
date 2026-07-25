@@ -142,7 +142,7 @@ restore_desktop() {
         return 1
     fi
 
-    /home/freezer/src/xfdesktop-transparent/start-transparent-xfdesktop-session.sh >"$RESTORE_LOG" 2>&1
+    "$HOME/.local/bin/start-transparent-xfdesktop-session" >"$RESTORE_LOG" 2>&1
     status=$?
     if [ "$status" -eq 0 ] && ensure_wallpaper "post-game restore"; then
         fade_in_after_game

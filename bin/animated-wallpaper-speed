@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-set -u
-STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/tie-dye-wallpaper
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+    # shellcheck source=../lib/xfce-plasma-common.sh
+    . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+    # shellcheck source=/dev/null
+    . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
+
+STATE_DIR=${WALLPAPER_STATE_DIR:-$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR}
 SPEED_FILE=$STATE_DIR/speed
 LABEL_FILE=$STATE_DIR/speed-label
 mkdir -p "$STATE_DIR"
@@ -24,8 +34,8 @@ current_label() {
 set_speed() {
     label=$1
     value=$(value_for "$label")
-    printf '%s\n' "$value" > "$SPEED_FILE"
-    printf '%s\n' "$label" > "$LABEL_FILE"
+    xfce_plasma_atomic_write "$SPEED_FILE" "$value"
+    xfce_plasma_atomic_write "$LABEL_FILE" "$label"
     notify "$label"
     printf '%s\n' "$label"
 }

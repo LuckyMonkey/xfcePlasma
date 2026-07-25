@@ -29,11 +29,15 @@ install_bin_text() {
 mkdir -p \
   "$HOME_DIR/.local/bin" \
   "$HOME_DIR/.local/lib/tie-dye-wallpaper" \
+  "$HOME_DIR/.local/lib/xfce-plasma" \
   "$HOME_DIR/.local/opt/xfdesktop-transparent" \
   "$HOME_DIR/.config/picom" \
   "$HOME_DIR/.config/game-mode-guard" \
   "$HOME_DIR/.config/autostart" \
   "$HOME_DIR/.config/systemd/user"
+
+cp -a "$ROOT/lib/xfce-plasma-common.sh" "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-common.sh"
+chmod 0644 "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-common.sh"
 
 for script in \
   tie-dye-wallpaper \

@@ -1,0 +1,1024 @@
+You are working inside the xfcePlasma repository.
+
+Your job is to refactor this project into a lean, portable, reproducible XFCE/X11 animated-shader desktop system using:
+
+- C for persistent runtime programs and performance-sensitive components
+- Bash/POSIX shell for installation, orchestration, diagnostics, and short-lived utilities
+- GLSL as a supported user extension format
+- systemd user services where appropriate
+
+Do not introduce Python, Node.js, Electron, Rust, Go, CMake dependency frameworks, JSON frameworks, databases, web UIs, package managers, or unnecessary daemons.
+
+The desired architecture is:
+
+    Bash = installation and control plane
+    C    = long-running runtime components
+    GLSL = visual compositions and user-created artwork
+
+The project must remain small, understandable, inspectable, and functional on Xubuntu/XFCE under X11.
+
+IMPORTANT SAFETY RULES
+
+1. Inspect the entire repository before making changes.
+2. Do not modify the running desktop installation in ~/.local, ~/.config, or systemd user directories while developing.
+3. Work only inside this repository unless explicitly running an isolated test.
+4. Do not kill the current XFCE desktop, xfdesktop, Picom, or wallpaper process during development.
+5. Do not run install.sh against the current user without explicit confirmation.
+6. Preserve the current visual and runtime behavior.
+7. Make incremental changes and test each phase.
+8. Back up or retain legacy implementations until replacements work.
+9. Do not delete the existing renderer binaries unless equivalent source and build support exist.
+10. Do not expose the private shader artwork as editable source in the final public-source layout.
+
+CURRENT REPOSITORY FACTS
+
+The repository currently contains:
+
+- Bash and POSIX shell scripts under bin/
+- one Python utility:
+      bin/game-mode-fade
+- a precompiled animated wallpaper renderer:
+      runtime/tie-dye-wallpaper/tie-dye-wallpaper
+- a precompiled Picom binary:
+      runtime/picom-v13
+- precompiled patched xfdesktop binaries
+- editable GLSL shader files under:
+      runtime/tie-dye-wallpaper/shaders/
+- systemd user units
+- autostart desktop files
+- Picom configuration
+- hardcoded references to:
+      /home/freezer
+      user freezer
+      /run/user/1000
+      DISPLAY=:0.0
+      monitorDP-0
+      monitorHDMI-0
+- a broken restore reference in bin/game-mode-guard:
+      /home/freezer/src/xfdesktop-transparent/start-transparent-xfdesktop-session.sh
+- an installer that performs sed replacement of hardcoded paths
+- unrelated personal XFCE keyboard shortcuts within the included XFCE config
+
+The existing system currently works on the author's machine. Refactor without breaking that working behavior.
+
+PRIMARY GOALS
+
+1. Remove Python from the project.
+2. Remove hardcoded usernames, home paths, UIDs, displays, monitor names, and source-tree paths.
+3. Make installation relocatable and idempotent.
+4. Add source and a normal build process for the custom runtime components where possible.
+5. Separate the open-source engine from the author's private shader artwork.
+6. Support user-created GLSL shaders later.
+7. Add dependency checks and a diagnostic command.
+8. Improve game-mode detection and restoration.
+9. Preserve the lightweight architecture.
+10. Document exactly what is open source, what is separately distributed artwork, and what remains precompiled.
+
+PHASE 1 — AUDIT
+
+Before editing, inspect and summarize:
+
+- every script in bin/
+- every systemd unit
+- every autostart file
+- install.sh
+- README.md and docs/
+- binary dependencies using file, ldd, readelf, and strings where useful
+- every hardcoded path, username, UID, display, monitor, process pattern, and temporary-file path
+- shell dialect used by each script
+- all external commands and libraries required
+- which scripts stay alive versus run once and exit
+- how the renderer loads shader.fs
+- how shader switching works
+- how speed control works
+- how SIGUSR1 fade behavior works
+- how game-mode shutdown and restoration work
+- how transparent xfdesktop is started
+- how Picom is started
+- how monitor syncing currently works
+
+Create:
+
+    docs/audit.md
+
+Include a table with:
+
+    component
+    language
+    persistent or one-shot
+    dependencies
+    current problems
+    proposed replacement
+
+Do not make speculative claims unsupported by the repository.
+
+PHASE 2 — PORTABILITY FOUNDATION
+
+Create a shared shell library:
+
+    lib/xfce-plasma-common.sh
+
+It must provide safe functions for resolving:
+
+- HOME
+- current username using id -un
+- UID using id -u
+- XDG_CONFIG_HOME
+- XDG_DATA_HOME
+- XDG_STATE_HOME
+- XDG_CACHE_HOME
+- XDG_RUNTIME_DIR
+- DBUS_SESSION_BUS_ADDRESS
+- DISPLAY
+- XAUTHORITY
+- project installation paths
+- logging directory
+- runtime state directory
+
+Defaults should follow XDG conventions:
+
+    CONFIG_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/xfce-plasma
+    DATA_DIR=${XDG_DATA_HOME:-$HOME/.local/share}/xfce-plasma
+    STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/xfce-plasma
+    CACHE_DIR=${XDG_CACHE_HOME:-$HOME/.cache}/xfce-plasma
+    RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
+
+Do not set HOME manually.
+
+Do not assume UID 1000.
+
+Do not assume the username is freezer.
+
+Do not assume DISPLAY=:0.0.
+
+Prefer inheriting DISPLAY, XAUTHORITY, DBUS_SESSION_BUS_ADDRESS, and XDG_RUNTIME_DIR from the active graphical user session.
+
+When a fallback is necessary:
+
+    XDG_RUNTIME_DIR=/run/user/$(id -u)
+    DBUS_SESSION_BUS_ADDRESS=unix:path=$XDG_RUNTIME_DIR/bus
+    XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
+
+Do not blindly source arbitrary user-controlled config files as shell code.
+
+Use a deliberately small key=value parser where configuration is needed.
+
+Update scripts to use the common library or equivalent generated constants.
+
+Eliminate all runtime dependence on sed replacing /home/freezer.
+
+Fix this broken restore path:
+
+    /home/freezer/src/xfdesktop-transparent/start-transparent-xfdesktop-session.sh
+
+It must call the installed executable through a resolved path, preferably:
+
+    "$HOME/.local/bin/start-transparent-xfdesktop-session"
+
+or a path derived from the project prefix.
+
+Search again after changes and ensure no project-runtime references remain to:
+
+    /home/freezer
+    /run/user/1000
+    USER=freezer
+    LOGNAME=freezer
+    DISPLAY=:0.0
+    /home/freezer/src
+
+Personal examples may appear only in clearly labelled documentation examples.
+
+PHASE 3 — REMOVE PYTHON
+
+Replace:
+
+    bin/game-mode-fade
+
+Determine what it currently does before rewriting it.
+
+If it is a short-lived control utility, replace it with Bash or POSIX shell.
+
+If it requires accurate animation timing, signal handling, X11 interaction, or persistent state, replace it with a small C program.
+
+Do not merely translate Python syntax line-for-line.
+
+Keep the replacement focused and small.
+
+The final repository must contain no Python source and must not require Python at runtime or installation time.
+
+Verify with:
+
+    grep -RInE 'python|python3|#!/usr/bin/env python' .
+
+Expected result: no runtime Python usage.
+
+PHASE 4 — C RUNTIME STRUCTURE
+
+Create a source layout:
+
+    src/
+      renderer/
+      guard/
+      common/
+
+Use a simple Makefile. Avoid CMake unless absolutely required.
+
+Preferred build interface:
+
+    make
+    make check
+    make install PREFIX="$HOME/.local"
+    make uninstall PREFIX="$HOME/.local"
+
+Compile with strict warnings:
+
+    -std=c11
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wconversion
+    -Wshadow
+    -Wformat=2
+
+Use reasonable release flags without unsafe fast-math assumptions.
+
+Do not suppress warnings globally.
+
+Persistent processes should be C only when this genuinely simplifies runtime behavior.
+
+Use this decision rule:
+
+- Runs once and mostly invokes system commands: shell
+- Runs continuously, watches files/processes, handles timing/signals, or renders frames: C
+
+Do not rewrite every tiny shell helper into C merely for ideological purity.
+
+PHASE 5 — RENDERER SOURCE AND SHADER API
+
+Inspect the existing renderer binary and repository behavior.
+
+If renderer source is absent, create a clean replacement renderer in C that reproduces the required public behavior.
+
+Use the existing graphics dependency only if practical. The current binary appears to use raylib, but verify this rather than assuming.
+
+The renderer must support:
+
+- receiving an X11 window ID from xwinwrap
+- rendering a full-window fragment shader
+- a time uniform
+- a resolution uniform
+- configurable speed
+- an FPS cap
+- fade-in on startup
+- fade-out on SIGUSR1
+- clean termination on SIGTERM and SIGINT
+- reloading a selected shader without restarting the entire desktop where practical
+- useful error logging when shader compilation fails
+- fallback to a safe basic shader if a user shader fails
+- minimal CPU use when frozen
+- no busy-loop polling
+
+Define and document a stable public shader contract, for example:
+
+    uniform float time;
+    uniform vec2 resolution;
+    uniform float speed;
+    uniform float fade;
+
+Adapt names only if the existing renderer requires another convention.
+
+Create:
+
+    docs/shader-api.md
+
+It must include:
+
+- required GLSL version
+- available uniforms
+- coordinate conventions
+- expected fragment output
+- example shader
+- performance guidance
+- how shader reload works
+- how errors are reported
+- how third parties install shaders
+
+Add one intentionally simple open-source demonstration shader only, such as:
+
+    examples/shaders/basic-gradient.fs
+
+Do not place the author's current artistic shaders in the public examples directory.
+
+PHASE 6 — PRIVATE ARTWORK SEPARATION
+
+The public repository should support an engine/art separation.
+
+Desired conceptual layout:
+
+Public repository:
+
+    src/
+    bin/
+    systemd/
+    config/
+    docs/
+    examples/shaders/basic-gradient.fs
+    tools/
+    Makefile
+    install.sh
+
+Private or separately distributed artwork:
+
+    xfce-plasma-art/
+      src/
+        motion-halftone.fs
+        tie-dye.fs
+        aurora-ribbons.fs
+        ...
+      build-art-pack.sh
+
+Do not destroy the existing shader files during development.
+
+Move or copy the current shaders into a clearly marked staging area ignored by Git, such as:
+
+    private-art-src/
+
+Add it to .gitignore.
+
+Create a build-time artwork packaging mechanism.
+
+Requirements:
+
+- Public engine works without private art.
+- Private shaders are not committed as editable GLSL source.
+- Users can add their own plain GLSL shaders.
+- The author's distributed artwork may be embedded or bundled separately.
+- The runtime must clearly distinguish:
+      built-in artwork
+      user shaders
+      example shaders
+- Shader names and metadata should be discoverable without exposing editable source.
+
+Important technical constraint:
+
+Do not claim that OpenGL driver shader binaries are universally portable.
+
+Do not depend on vendor-specific program binary caches.
+
+For maximum compatibility, implement one of these practical models:
+
+Preferred model:
+- private build converts GLSL source into C byte arrays
+- arrays are compiled into a separate optional artwork module or renderer build
+- OpenGL still compiles the shader text at runtime
+- source is absent from the public repository
+- acknowledge that determined reverse engineering remains possible
+
+Alternative model:
+- an optional packed asset file that is unpacked or decrypted in memory
+- keep it simple
+- do not make false DRM/security claims
+
+Do not switch the renderer to Vulkan solely for SPIR-V packaging unless there is a compelling measured reason.
+
+Create:
+
+    docs/artwork-packaging.md
+
+Clearly state:
+
+- engine license
+- example shader license
+- artwork license
+- user shader ownership
+- compiled distribution limitations
+- that compiled or embedded artwork is not guaranteed to be impossible to extract
+
+PHASE 7 — LIVE SHADER RELOAD
+
+Improve shader selection so changing shaders does not require two full service restarts.
+
+Preferred behavior:
+
+    select shader
+    update selected-shader state atomically
+    renderer detects change with inotify or receives a signal
+    compile candidate shader
+    if successful, crossfade or cleanly fade to it
+    if compilation fails, retain current shader
+    show a notification or log error
+
+Do not replace a working shader before validating the new one.
+
+Use atomic writes:
+
+    write temporary file
+    fsync if appropriate
+    rename into place
+
+Avoid repeatedly copying files unnecessarily.
+
+The picker can remain Bash.
+
+Support:
+
+    animated-wallpaper-picker list
+    animated-wallpaper-picker current
+    animated-wallpaper-picker next
+    animated-wallpaper-picker prev
+    animated-wallpaper-picker set NAME
+    animated-wallpaper-picker user-add PATH
+
+Names containing spaces must be handled safely.
+
+Never use eval.
+
+PHASE 8 — SPEED AND SETTINGS
+
+Keep the speed utility lightweight.
+
+Support:
+
+    animated-wallpaper-speed get
+    animated-wallpaper-speed set VALUE
+    animated-wallpaper-speed up
+    animated-wallpaper-speed down
+    animated-wallpaper-speed freeze
+    animated-wallpaper-speed restore
+
+Retain friendly presets such as:
+
+    frozen
+    slow
+    medium
+    fast
+    motion-sickness
+
+Store settings under XDG_STATE_HOME or XDG_CONFIG_HOME as appropriate.
+
+Use atomic file updates.
+
+Validate numeric input.
+
+Set sensible bounds.
+
+Do not rely on restarting the renderer merely to change speed.
+
+The renderer should watch the state file with inotify or accept a signal/IPC command.
+
+Use a simple key=value config format, not JSON.
+
+PHASE 9 — GAME MODE
+
+Refactor game-mode detection.
+
+Current broad matching of any .exe may mistake Wine utilities, installers, launchers, or configuration tools for games.
+
+Implement configurable matching with:
+
+    include patterns
+    exclude patterns
+    optional process-name matching
+    optional command-line matching
+
+Keep the configuration human-readable.
+
+Example:
+
+    ~/.config/xfce-plasma/game-mode.conf
+
+Possible syntax:
+
+    include_regex=...
+    exclude_regex=...
+    enter_delay_seconds=2
+    exit_delay_seconds=5
+    disable_picom=true
+    disable_wallpaper=true
+    disable_xfwm_compositor=true
+
+Do not execute the config as shell code.
+
+Parse it safely.
+
+The guard should:
+
+1. Detect a qualifying game.
+2. Avoid repeatedly entering game mode.
+3. Ask the renderer to fade out.
+4. Wait for fade completion or a bounded timeout.
+5. Stop the animated renderer.
+6. Stop project-managed Picom only.
+7. Disable XFWM compositing only when configured.
+8. Record exactly which components were running.
+9. On exit, wait for the configured delay.
+10. Restore only components that the project itself stopped.
+11. Restore transparent xfdesktop through the installed helper.
+12. Avoid duplicate services and duplicate Picom processes.
+13. Recover after crashes or stale state.
+14. Log transitions clearly.
+
+Do not use broad pkill patterns that could kill an unrelated Picom instance.
+
+Prefer systemd user service state and tracked PIDs.
+
+A persistent game guard may be implemented in C using /proc scanning and a moderate polling interval, or with another reliable Linux interface.
+
+Do not poll aggressively.
+
+A 1–2 second interval is sufficient.
+
+PHASE 10 — SYSTEMD USER SERVICES
+
+Rewrite systemd user units to be portable.
+
+Do not embed:
+
+    /home/freezer
+    freezer
+    UID 1000
+    DISPLAY=:0.0
+    ~/.Xauthority as a fixed absolute path
+
+Prefer installation-generated units using specifiers such as:
+
+    %h
+
+or environment files generated during installation.
+
+Use:
+
+    EnvironmentFile=-%h/.config/xfce-plasma/environment
+
+only if genuinely needed.
+
+Document how the graphical session imports environment variables:
+
+    systemctl --user import-environment DISPLAY XAUTHORITY XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+    dbus-update-activation-environment --systemd DISPLAY XAUTHORITY
+
+Do not force these commands on unsupported sessions without checks.
+
+Services should have:
+
+- meaningful Description
+- appropriate After/Wants relationships
+- Restart behavior only where sensible
+- bounded restart delays
+- logging to the journal
+- no redirection to random /tmp log files
+- no duplicate startup through both systemd and XDG autostart unless intentionally required
+
+Choose one authoritative startup method.
+
+Prefer systemd user services initiated by one small XDG autostart environment-import/bootstrap entry if XFCE does not naturally start them with the required display environment.
+
+PHASE 11 — MONITOR DISCOVERY
+
+Remove hardcoded:
+
+    monitorDP-0
+    monitorHDMI-0
+
+Determine active outputs dynamically using xrandr or XFCE configuration properties.
+
+The monitor-sync utility should:
+
+- list connected outputs
+- determine the relevant xfconf backdrop properties
+- support any number of connected monitors
+- avoid assuming screen0/workspace0 where possible
+- gracefully do nothing on a single monitor
+- log or report unmatched XFCE monitor property names
+- allow explicit mappings in config as a fallback
+- safely handle monitor names containing hyphens
+
+Support:
+
+    dual-monitor-wallpaper-sync --once
+    dual-monitor-wallpaper-sync --watch
+    dual-monitor-wallpaper-sync --dry-run
+
+A long-running watcher should be C only if that offers a clear advantage. Otherwise use a modest shell loop or xfconf event monitoring without wasteful polling.
+
+Consider renaming it to:
+
+    xfce-plasma-monitor-sync
+
+while preserving a compatibility wrapper.
+
+PHASE 12 — INSTALLER
+
+Rewrite install.sh to be:
+
+- idempotent
+- portable
+- non-destructive
+- clear about what it changes
+- able to install into a staging DESTDIR
+- able to install for the current user
+- able to uninstall only project-owned files
+- capable of upgrading an existing installation
+- incapable of overwriting unrelated user configuration without backup and confirmation
+
+Support:
+
+    ./install.sh --check
+    ./install.sh --dry-run
+    ./install.sh --user
+    ./install.sh --prefix PATH
+    ./install.sh --uninstall
+    ./install.sh --no-enable
+    ./install.sh --with-private-art PATH
+
+Do not install the author's entire personal XFCE configuration.
+
+Specifically inspect:
+
+    config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml
+
+It contains unrelated personal shortcuts such as spotlight and read-screen-text.
+
+Do not ship or install unrelated personal shortcuts.
+
+Instead provide an optional helper that adds only project-specific keybindings, and backs up the user's XFCE shortcut configuration before changing it.
+
+Do not use brittle global sed replacements.
+
+Generate files from templates or install portable files directly.
+
+Create a manifest of installed project-owned files so uninstall is safe.
+
+Do not remove user-created shaders or user configuration during uninstall unless explicitly requested.
+
+PHASE 13 — DEPENDENCY CHECKS
+
+Create:
+
+    bin/xfce-plasma-doctor
+
+This should be Bash unless C provides a real benefit.
+
+It must check and print concise status for:
+
+- X11 session
+- XFCE session
+- DISPLAY
+- XAUTHORITY
+- user DBus
+- systemd user manager
+- xwinwrap
+- xrandr
+- xprop
+- xfconf-query
+- wmctrl
+- notify-send
+- zenity or rofi, if picker requires one
+- Picom
+- renderer binary
+- renderer shared-library dependencies
+- patched xfdesktop binary dependencies
+- shader directories
+- selected shader
+- shader readability
+- active services
+- duplicate renderer processes
+- duplicate Picom processes
+- stale PID/state files
+- connected displays
+- write access to config/state/cache directories
+- whether current session is Wayland instead of X11
+
+Output example:
+
+    ✅ X11 session
+    ✅ XFCE detected
+    ✅ xwinwrap
+    ✅ renderer dependencies
+    ⚠ rofi unavailable; using zenity
+    ❌ libraylib.so.600 missing
+    ⚠ Wayland session unsupported
+
+Support:
+
+    xfce-plasma-doctor
+    xfce-plasma-doctor --verbose
+    xfce-plasma-doctor --json
+
+For --json, generate valid JSON manually and carefully, or omit the option if doing so would introduce fragile code. Plain text is more important than JSON.
+
+Exit nonzero only for conditions that prevent operation.
+
+Also add:
+
+    ./install.sh --check
+
+which invokes equivalent preflight checks without modifying the system.
+
+PHASE 14 — DEPENDENCY DOCUMENTATION
+
+Create a precise dependency document.
+
+Separate dependencies into:
+
+- build dependencies
+- required runtime dependencies
+- optional runtime dependencies
+- bundled binaries
+- system-provided XFCE libraries
+
+Do not guess package names.
+
+Where package names differ by distribution, document verified Ubuntu/Xubuntu names and state that other distributions may differ.
+
+Inspect all ELF binaries with ldd and readelf.
+
+Report missing libraries clearly.
+
+Do not silently ship an undocumented dependency on a specific raylib ABI.
+
+If raylib remains dynamically linked, either:
+
+- document the exact required ABI and package/build procedure, or
+- build/install a compatible private library path with appropriate rpath, or
+- statically link where legally and technically appropriate
+
+Do not copy arbitrary system libraries into the repository.
+
+PHASE 15 — BINARY REPRODUCIBILITY
+
+The existing repository contains precompiled binaries:
+
+    runtime/picom-v13
+    runtime/tie-dye-wallpaper/tie-dye-wallpaper
+    runtime/xfdesktop-transparent/bin/xfdesktop
+    runtime/xfdesktop-transparent/bin/xfdesktop-settings
+
+For each binary:
+
+- document provenance
+- document version
+- document build flags if known
+- document source URL or patch source if available
+- record sha256
+- inspect dynamic dependencies
+- state whether it can be rebuilt from this repository
+
+For patched xfdesktop, add:
+
+    patches/xfdesktop-transparent.patch
+
+and exact build instructions if the patch/source is available.
+
+If the source or patch cannot be reconstructed accurately, do not fabricate it.
+
+Clearly mark the binary as currently non-reproducible and retain it as a compatibility artifact until proper source is supplied.
+
+Do not claim the whole project is open source if critical components remain binary-only.
+
+Use language such as:
+
+    The orchestration and new renderer source are open.
+    The bundled patched xfdesktop compatibility binary remains separately supplied until its source patch is published.
+
+PHASE 16 — TEMPORARY FILES, LOGGING, AND LOCKING
+
+Replace unsafe /tmp filenames with:
+
+    $XDG_RUNTIME_DIR/xfce-plasma/
+
+Use mkdir -p with restrictive permissions where appropriate.
+
+Use flock for scripts that must not run concurrently.
+
+Ensure:
+
+- only one renderer start operation runs at once
+- only one restore operation runs at once
+- only one game guard runs at once
+- shader selection cannot race
+- speed file updates cannot race
+
+Prefer journald for systemd service logs.
+
+For manually run tools, use stderr and optionally:
+
+    $XDG_STATE_HOME/xfce-plasma/logs/
+
+Do not grow logs without bounds.
+
+PHASE 17 — SHELL QUALITY
+
+For Bash scripts use:
+
+    #!/usr/bin/env bash
+    set -Eeuo pipefail
+
+where compatible.
+
+For true POSIX shell scripts use:
+
+    #!/bin/sh
+    set -eu
+
+Do not label a script POSIX if it uses Bash features.
+
+Quote all expansions unless intentional splitting is required.
+
+Avoid:
+
+- eval
+- parsing ls
+- unsafe xargs
+- unquoted globs
+- pgrep/pkill patterns that can match unrelated commands
+- process identification based solely on truncated command strings
+- writing directly over config files
+- sourcing untrusted config
+- global sed replacement of arbitrary paths
+
+Run shellcheck on all shell scripts if available.
+
+Document any intentional shellcheck suppression inline.
+
+PHASE 18 — TESTS
+
+Add a lightweight test structure:
+
+    tests/
+      test-path-resolution.sh
+      test-config-parser.sh
+      test-installer-dry-run.sh
+      test-picker.sh
+      test-speed.sh
+      test-game-patterns.sh
+      test-no-hardcoded-user.sh
+
+Tests must not alter the running desktop.
+
+Use temporary HOME, XDG directories, fake executables, and mocked command paths.
+
+Test at minimum:
+
+- username other than freezer
+- UID other than 1000
+- HOME containing spaces
+- missing XDG variables
+- missing DISPLAY
+- Wayland session warning
+- one monitor
+- three monitors
+- shader name containing spaces
+- invalid shader
+- invalid speed input
+- game include match
+- game exclude match
+- stale state recovery
+- install then uninstall inside a temporary prefix
+- no files written outside test directories
+- no /home/freezer remaining in runtime files
+- no Python dependency
+- no unrelated personal XFCE shortcuts installed
+
+Provide:
+
+    make check
+
+PHASE 19 — DOCUMENTATION
+
+Rewrite README.md around the actual project.
+
+Suggested structure:
+
+1. What xfcePlasma is
+2. Architecture
+3. Supported environment
+4. Screenshot/video placeholder
+5. Dependencies
+6. Build
+7. Installation
+8. Shader selection
+9. Speed controls
+10. Game mode
+11. Creating user shaders
+12. Private artwork packs
+13. Diagnostics
+14. Recovery
+15. Uninstall
+16. Known limitations
+17. Licensing and binary status
+
+Do not market it as Wayland-compatible.
+
+Be explicit that the current design targets XFCE under X11.
+
+Explain the stack:
+
+    XFWM
+    Picom
+    xwinwrap
+    C shader renderer
+    transparent xfdesktop
+    systemd user services
+
+Explain that it is a real-time shader renderer, not a looping video wallpaper.
+
+Update docs/operations.md with reliable recovery commands that use portable paths and systemd user services.
+
+PHASE 20 — LICENSING
+
+Do not select a final license without clearly separating components.
+
+Create placeholder files or documentation sections for:
+
+- engine source license
+- third-party licenses
+- Picom license/source
+- raylib license if used
+- patched xfdesktop license/source obligations
+- example shader license
+- private artwork license
+
+The project's visual artwork and shader compositions must be treated separately from the engine.
+
+Do not imply that distributing compiled GPL-covered binaries removes source obligations.
+
+Inspect the licenses of bundled Picom and xfdesktop artifacts and flag any source-distribution requirements.
+
+This is important: comply with upstream licenses.
+
+PHASE 21 — ACCEPTANCE CRITERIA
+
+The work is complete only when:
+
+1. No Python runtime or source remains.
+2. No functional runtime file contains /home/freezer.
+3. No functional runtime file assumes UID 1000.
+4. No functional runtime file assumes DISPLAY=:0.0.
+5. No monitor name is hardcoded as required behavior.
+6. The broken source-tree restore path is fixed.
+7. Installation works in a temporary HOME and PREFIX.
+8. Uninstall removes only project-owned files.
+9. User-created shaders survive upgrades and uninstall by default.
+10. Public operation works using the example shader without private artwork.
+11. Private artwork can be included through a separate build/install input.
+12. Shader changes do not require restarting transparent xfdesktop.
+13. Game mode restores only components it stopped.
+14. Project-managed Picom is not confused with unrelated Picom processes.
+15. All shell scripts pass shellcheck or have justified suppressions.
+16. C code builds with strict warnings.
+17. make check passes.
+18. xfce-plasma-doctor identifies missing dependencies clearly.
+19. README accurately distinguishes source-built and binary-only components.
+20. The repository remains lean and understandable.
+
+IMPLEMENTATION ORDER
+
+Follow this order:
+
+1. Audit and report.
+2. Add tests that capture current portable behavior.
+3. Add shared path/environment handling.
+4. Remove hardcoded personal paths.
+5. Fix game restore.
+6. Replace Python.
+7. Improve installer and service templates.
+8. Add diagnostics.
+9. Add renderer source/build support.
+10. Add live shader reload.
+11. Separate private artwork.
+12. Improve game guard.
+13. Generalize monitor support.
+14. Complete tests and documentation.
+15. Run final audit.
+
+Do not attempt a giant rewrite in one step.
+
+After each phase:
+
+- summarize files changed
+- show tests run
+- show failures
+- explain any behavior that could not yet be reproduced
+- make a focused Git commit if this is a Git working tree
+
+FINAL REPORT
+
+At the end provide:
+
+- concise architecture summary
+- files added
+- files modified
+- files removed
+- dependencies
+- build commands
+- test results
+- known limitations
+- binary reproducibility status
+- licensing concerns
+- manual steps still required
+- exact commands for a safe dry-run installation
+- exact commands for installing into a temporary test HOME
+- exact commands for installing normally only after review
+
+Begin by auditing the repository. Do not modify anything until the audit is complete.

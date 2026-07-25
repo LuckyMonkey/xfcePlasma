@@ -1,0 +1,24 @@
+[Unit]
+Description=Patched transparent xfdesktop icon layer
+After=graphical-session.target xfce4-session.target dbus.service tie-dye-wallpaper-mvp.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+Environment=HOME=/home/freezer
+Environment=USER=freezer
+Environment=LOGNAME=freezer
+Environment=DISPLAY=:0.0
+Environment=XAUTHORITY=/home/freezer/.Xauthority
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+Environment=NO_AT_BRIDGE=1
+ExecStartPre=-/usr/bin/pkill -x xfdesktop
+ExecStartPre=/usr/bin/xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 2
+ExecStartPre=/usr/bin/xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s true
+ExecStart=/home/freezer/.local/opt/xfdesktop-transparent/bin/xfdesktop --disable-wm-check
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

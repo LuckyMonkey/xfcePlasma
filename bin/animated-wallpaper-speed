@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -u
+STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/tie-dye-wallpaper
+SPEED_FILE=$STATE_DIR/speed
+LABEL_FILE=$STATE_DIR/speed-label
+mkdir -p "$STATE_DIR"
+
+labels='frozen slow medium motion-sickness'
+value_for() {
+    case "$1" in
+        frozen) printf '0.0';;
+        slow) printf '0.35';;
+        medium) printf '1.0';;
+        motion-sickness) printf '2.85';;
+        *) printf '1.0';;
+    esac
+}
+notify() {
+    command -v notify-send >/dev/null 2>&1 && notify-send "Wallpaper speed" "$1" >/dev/null 2>&1 || true
+}
+current_label() {
+    if [ -s "$LABEL_FILE" ]; then cat "$LABEL_FILE"; else printf 'medium\n'; fi
+}
+set_speed() {
+    label=$1
+    value=$(value_for "$label")
+    printf '%s\n' "$value" > "$SPEED_FILE"
+    printf '%s\n' "$label" > "$LABEL_FILE"
+    notify "$label"
+    printf '%s\n' "$label"
+}
+relative() {
+    direction=$1
+    cur=$(current_label)
+    set -- $labels
+    count=$#
+    idx=1; i=1
+    for label in "$@"; do
+        [ "$label" = "$cur" ] && idx=$i
+        i=$((i + 1))
+    done
+    if [ "$direction" = up ]; then
+        idx=$((idx + 1)); [ "$idx" -le "$count" ] || idx=$count
+    else
+        idx=$((idx - 1)); [ "$idx" -ge 1 ] || idx=1
+    fi
+    i=1
+    for label in "$@"; do
+        [ "$i" -eq "$idx" ] && { set_speed "$label"; return; }
+        i=$((i + 1))
+    done
+}
+
+case "${1:-current}" in
+    up|faster|--up) relative up;;
+    down|slower|--down) relative down;;
+    frozen|slow|medium|motion-sickness) set_speed "$1";;
+    current|--current) current_label;;
+    value|--value) cat "$SPEED_FILE" 2>/dev/null || printf '1.0\n';;
+    list|--list) printf '%s\n' $labels;;
+    *) current_label;;
+esac

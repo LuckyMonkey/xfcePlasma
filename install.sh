@@ -42,6 +42,9 @@ for script in \
   dual-monitor-wallpaper-sync \
   game-mode-guard \
   game-mode-fade \
+  animated-wallpaper-picker \
+  animated-wallpaper-speed \
+  start-animated-wallpaper-with-xfdesktop-icons \
   start-transparent-xfdesktop-session \
   run-custom-xfdesktop \
   stop-custom-xfdesktop \
@@ -52,6 +55,7 @@ done
 
 cp -a "$ROOT/runtime/tie-dye-wallpaper/tie-dye-wallpaper" "$HOME_DIR/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
 cp -a "$ROOT/runtime/tie-dye-wallpaper/shader.fs" "$HOME_DIR/.local/lib/tie-dye-wallpaper/shader.fs"
+rsync -a "$ROOT/runtime/tie-dye-wallpaper/shaders/" "$HOME_DIR/.local/lib/tie-dye-wallpaper/shaders/"
 chmod 0755 "$HOME_DIR/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
 
 cp -a "$ROOT/runtime/picom-v13" "$HOME_DIR/.local/bin/picom"
@@ -77,4 +81,4 @@ echo "Installed xfcePlasma files for $USER_NAME."
 echo "Recommended next steps:"
 echo "  systemctl --user enable --now game-mode-guard.service"
 echo "  systemctl --user restart tie-dye-wallpaper-mvp.service"
-echo "  ~/.local/bin/start-transparent-xfdesktop-session"
+echo "  ~/.local/bin/start-animated-wallpaper-with-xfdesktop-icons"

@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -u
+export DISPLAY=${DISPLAY:-:0.0}
+export XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
+export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}
+sleep "${WALLPAPER_STACK_DELAY:-8}"
+systemctl --user restart tie-dye-wallpaper-mvp.service >/tmp/tie-dye-wallpaper-stack.log 2>&1 || true
+sleep 1
+systemctl --user restart xfdesktop-transparent.service >>/tmp/tie-dye-wallpaper-stack.log 2>&1 || true

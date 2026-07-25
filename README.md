@@ -17,7 +17,7 @@ This is **not PipCast**. PipCast lives elsewhere and is intentionally excluded.
 
 ```text
 bin/                         helper scripts installed to ~/.local/bin
-runtime/tie-dye-wallpaper/   animated wallpaper binary and shader
+runtime/tie-dye-wallpaper/   animated wallpaper binary, active shader, and shader presets
 runtime/xfdesktop-transparent/ custom transparent xfdesktop runtime
 runtime/picom-v13            Picom v13 binary currently in use
 config/picom/picom.conf      compositor/animation config
@@ -84,16 +84,37 @@ The guard is intentionally generic; it is not tied to Cyberpunk or any one game.
 
 ## Important Commands
 
-Start/restore the full stack:
+Start/restore the full wallpaper plus desktop-icon stack:
 
 ```bash
-~/.local/bin/start-transparent-xfdesktop-session
+~/.local/bin/start-animated-wallpaper-with-xfdesktop-icons
+```
+
+Switch animated wallpapers:
+
+```bash
+~/.local/bin/animated-wallpaper-picker next
+~/.local/bin/animated-wallpaper-picker previous
+```
+
+Adjust speed live:
+
+```bash
+~/.local/bin/animated-wallpaper-speed up
+~/.local/bin/animated-wallpaper-speed down
 ```
 
 Stop wallpaper animation:
 
 ```bash
 ~/.local/bin/stop-animated-wallpaper
+```
+
+Wallpaper hotkeys:
+
+```text
+Ctrl+Alt+Shift+Left/Right -> previous/next wallpaper
+Ctrl+Alt+Shift+Up/Down    -> slower/faster wallpaper speed
 ```
 
 Emergency shortcut:

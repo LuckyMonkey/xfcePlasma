@@ -91,6 +91,10 @@
       <property name="&lt;Primary&gt;Pause" type="string" value="/home/freezer/.local/bin/read-screen-text stop"/>
       <property name="&lt;Super&gt;Pause" type="string" value="/home/freezer/.local/bin/read-screen-text help"/>
       <property name="&lt;Primary&gt;&lt;Alt&gt;&lt;Shift&gt;F12" type="string" value="/home/freezer/.local/bin/stop-animated-wallpaper"/>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;&lt;Shift&gt;Left" type="string" value="/home/freezer/.local/bin/animated-wallpaper-picker prev"/>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;&lt;Shift&gt;Right" type="string" value="/home/freezer/.local/bin/animated-wallpaper-picker next"/>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;&lt;Shift&gt;Up" type="string" value="/home/freezer/.local/bin/animated-wallpaper-speed up"/>
+      <property name="&lt;Primary&gt;&lt;Alt&gt;&lt;Shift&gt;Down" type="string" value="/home/freezer/.local/bin/animated-wallpaper-speed down"/>
     </property>
   </property>
   <property name="xfwm4" type="empty">

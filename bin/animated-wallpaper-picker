@@ -1,0 +1,117 @@
+#!/usr/bin/env bash
+set -u
+
+RUNTIME=${WALLPAPER_RUNTIME:-$HOME/.local/lib/tie-dye-wallpaper}
+SHADER_DIR=${WALLPAPER_SHADER_DIR:-$RUNTIME/shaders}
+ACTIVE_SHADER=$RUNTIME/shader.fs
+STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/tie-dye-wallpaper
+STATE_FILE=$STATE_DIR/current-shader
+SERVICE=${WALLPAPER_SERVICE:-tie-dye-wallpaper-mvp.service}
+
+ORDER='tie-dye.fs motion-halftone.fs qr-cube-maze.fs sky-water-wave.fs kaleidoscope-tunnel.fs aurora-ribbons.fs plasma-lava.fs deep-ocean.fs'
+
+label_for() {
+    case "$1" in
+        tie-dye.fs) printf 'Tie Dye';;
+        motion-halftone.fs) printf 'Motion Halftone';;
+        kaleidoscope-tunnel.fs) printf 'Kaleidoscope Tunnel';;
+        aurora-ribbons.fs) printf 'Aurora Ribbons';;
+        plasma-lava.fs) printf 'Plasma Lava';;
+        deep-ocean.fs) printf 'Deep Ocean';;
+        *) basename "$1" .fs | sed 's/-/ /g; s/\b\(.\)/\u\1/g';;
+    esac
+}
+
+notify() {
+    command -v notify-send >/dev/null 2>&1 && notify-send "Animated wallpaper" "$1" >/dev/null 2>&1 || true
+}
+
+available() {
+    for name in $ORDER; do
+        [ -f "$SHADER_DIR/$name" ] && printf '%s\n' "$name"
+    done
+    find "$SHADER_DIR" -maxdepth 1 -type f -name '*.fs' -printf '%f\n' 2>/dev/null | sort | while read -r name; do
+        case " $ORDER " in *" $name "*) ;; *) printf '%s\n' "$name";; esac
+    done
+}
+
+current() {
+    if [ -s "$STATE_FILE" ] && [ -f "$SHADER_DIR/$(cat "$STATE_FILE")" ]; then
+        cat "$STATE_FILE"
+    elif cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/tie-dye.fs" 2>/dev/null; then
+        printf 'tie-dye.fs\n'
+    else
+        active_hash=$(sha256sum "$ACTIVE_SHADER" 2>/dev/null | awk '{print $1}')
+        for name in $(available); do
+            [ "$active_hash" = "$(sha256sum "$SHADER_DIR/$name" 2>/dev/null | awk '{print $1}')" ] && { printf '%s\n' "$name"; return; }
+        done
+        printf 'tie-dye.fs\n'
+    fi
+}
+
+select_relative() {
+    direction=$1
+    cur=$(current)
+    set -- $(available)
+    count=$#
+    [ "$count" -gt 0 ] || exit 1
+    i=1
+    index=1
+    for name in "$@"; do
+        [ "$name" = "$cur" ] && index=$i
+        i=$((i + 1))
+    done
+    if [ "$direction" = next ]; then
+        index=$((index + 1)); [ "$index" -le "$count" ] || index=1
+    else
+        index=$((index - 1)); [ "$index" -ge 1 ] || index=$count
+    fi
+    i=1
+    for name in "$@"; do
+        [ "$i" -eq "$index" ] && { printf '%s\n' "$name"; return; }
+        i=$((i + 1))
+    done
+}
+
+choose_gui() {
+    cur=$(current)
+    rows=''
+    for name in $(available); do
+        label=$(label_for "$name")
+        if [ "$name" = "$cur" ]; then active=TRUE; else active=FALSE; fi
+        rows="$rows $active '$label' '$name'"
+    done
+    if command -v zenity >/dev/null 2>&1; then
+        eval zenity --list --radiolist --title="Animated wallpaper" --text="Choose wallpaper" --column="" --column="Wallpaper" --column="File" --hide-column=3 --print-column=3 $rows 2>/dev/null
+    elif command -v rofi >/dev/null 2>&1; then
+        available | while read -r name; do label_for "$name"; printf '\t%s\n' "$name"; done | rofi -dmenu -p "Wallpaper" | awk -F '\t' '{print $2}'
+    else
+        available
+    fi
+}
+
+apply_shader() {
+    name=$1
+    src=$SHADER_DIR/$name
+    [ -f "$src" ] || { notify "Missing shader: $name"; exit 1; }
+    mkdir -p "$STATE_DIR"
+    cp -f "$src" "$ACTIVE_SHADER"
+    printf '%s\n' "$name" > "$STATE_FILE"
+    systemctl --user restart "$SERVICE" >/tmp/animated-wallpaper-picker.log 2>&1 || true
+    sleep 1
+    systemctl --user restart xfdesktop-transparent.service >>/tmp/animated-wallpaper-picker.log 2>&1 || true
+    notify "$(label_for "$name")"
+}
+
+case "${1:-pick}" in
+    next|--next) choice=$(select_relative next);;
+    prev|previous|--prev|--previous) choice=$(select_relative prev);;
+    list|--list) available; exit 0;;
+    current|--current) current; exit 0;;
+    pick|--pick) choice=$(choose_gui);;
+    *.fs) choice=$1;;
+    *) choice=$(choose_gui);;
+esac
+
+[ -n "${choice:-}" ] || exit 0
+apply_shader "$choice"

@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
+import os
 import sys
+import subprocess
 import time
+
+os.environ.setdefault('DISPLAY', ':0.0')
+os.environ.setdefault('XAUTHORITY', '/home/freezer/.Xauthority')
+os.environ.setdefault('XDG_RUNTIME_DIR', '/run/user/1000')
+os.environ.setdefault('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus')
 
 try:
     import gi
@@ -9,10 +16,27 @@ try:
 except Exception:
     sys.exit(0)
 
+if not Gtk.init_check()[0]:
+    sys.exit(0)
+
 mode = sys.argv[1] if len(sys.argv) > 1 else 'pulse'
-steps = 24
-interval_ms = 16
-hold_ms = 120
+fade_color = os.environ.get('GAME_MODE_FADE_COLOR', 'black').lower()
+command = []
+if len(sys.argv) > 2:
+    if sys.argv[2] in ('black', 'white'):
+        fade_color = sys.argv[2].lower()
+        command = sys.argv[3:]
+    else:
+        command = sys.argv[2:]
+steps = int(os.environ.get('GAME_MODE_FADE_STEPS', '42'))
+interval_ms = int(os.environ.get('GAME_MODE_FADE_INTERVAL_MS', '16'))
+hold_ms = int(os.environ.get('GAME_MODE_FADE_HOLD_MS', '220'))
+command_ran = False
+colors = {
+    'black': (0.0, 0.0, 0.0),
+    'white': (1.0, 1.0, 1.0),
+}
+r, g, b = colors.get(fade_color, colors['black'])
 
 window = Gtk.Window(type=Gtk.WindowType.POPUP)
 window.set_decorated(False)
@@ -42,13 +66,23 @@ phase = 'up' if mode in ('out', 'pulse') else 'down'
 frame = 0
 
 def draw(_widget, cr):
-    cr.set_source_rgba(0, 0, 0, max(0.0, min(1.0, alpha)))
+    cr.set_source_rgba(r, g, b, max(0.0, min(1.0, alpha)))
     cr.set_operator(1)  # CAIRO_OPERATOR_OVER
     cr.paint()
     return False
 
 window.connect('draw', draw)
 window.show_all()
+
+def run_command_once():
+    global command_ran
+    if command_ran or not command:
+        return
+    command_ran = True
+    try:
+        subprocess.run(command, check=False)
+    except Exception:
+        pass
 
 def tick():
     global alpha, phase, frame
@@ -59,7 +93,8 @@ def tick():
     if phase == 'up':
         alpha = smooth
         if t >= 1.0:
-            if mode == 'out':
+            run_command_once()
+            if mode == 'out' and not command:
                 Gtk.main_quit()
                 return False
             phase = 'hold'
@@ -78,5 +113,5 @@ def tick():
     return True
 
 GLib.timeout_add(interval_ms, tick)
-GLib.timeout_add(2000, Gtk.main_quit)
+GLib.timeout_add(max(3000, steps * interval_ms * 3 + hold_ms + 1000), Gtk.main_quit)
 Gtk.main()

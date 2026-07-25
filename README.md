@@ -22,6 +22,7 @@ runtime/xfdesktop-transparent/ custom transparent xfdesktop runtime
 runtime/picom-v13            Picom v13 binary currently in use
 config/picom/picom.conf      compositor/animation config
 config/game-mode-guard/      process patterns for game detection
+config/xfce4/                XFCE keyboard shortcut backup
 autostart/                   XFCE autostart desktop entries
 systemd/user/                user services
 docs/                        operational notes
@@ -93,6 +94,12 @@ Stop wallpaper animation:
 
 ```bash
 ~/.local/bin/stop-animated-wallpaper
+```
+
+Emergency shortcut:
+
+```text
+Ctrl+Alt+Shift+F12 -> ~/.local/bin/stop-animated-wallpaper
 ```
 
 Restart Picom effects:

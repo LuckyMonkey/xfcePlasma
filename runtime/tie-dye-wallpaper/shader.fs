@@ -3,6 +3,8 @@ in vec2 fragTexCoord;
 out vec4 finalColor;
 uniform vec2 resolution;
 uniform float time;
+uniform float fade;
+uniform float fadeTarget;
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -27,6 +29,9 @@ void main() {
     float hue=fract(.54+.12*p+.28*n+t*.28);
     vec3 ink=hsv(hue,.82,1.);
     float density=.48+.18*sin(p*.65+n*2.);
-    vec3 col=1.-density*(1.-ink);
+    float f=clamp(fade,0.,1.);
+    float fadedDensity=mix(1.,density,f);
+    vec3 fadedInk=mix(vec3(fadeTarget),ink,f);
+    vec3 col=1.-fadedDensity*(1.-fadedInk);
     finalColor=vec4(clamp(col,0.,1.),1.);
 }

@@ -70,3 +70,25 @@ contain spaces. A user shader cannot replace a built-in shader with the same
 filename.
 
 See `examples/shaders/basic-gradient.fs` for a minimal implementation.
+
+## Metadata and thumbnails
+
+A shader does not need metadata to work. Bundled and user shaders may add an
+optional sidecar next to the GLSL file:
+
+```text
+shaders/tie-dye.fs
+shaders/tie-dye.meta
+```
+
+Sidecars use simple `key=value` lines. Recognized fields are `id`,
+`display_name`, `category`, `description`, `author`, `thumbnail`, and
+`sort_order`. Unknown fields are ignored. Missing metadata falls back to a
+display name derived from the `.fs` filename, the Experimental category, and a
+neutral thumbnail.
+
+Repository thumbnails are static PNG files stored at
+`assets/thumbnails/<shader-id>.png`. Installed copies live under the project
+XDG data directory. The settings UI does not render thumbnails during launch,
+and xfcePlasma does not run a thumbnail daemon. Third-party shaders remain
+fully selectable when their sidecar or thumbnail is absent.

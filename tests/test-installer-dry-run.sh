@@ -22,6 +22,9 @@ HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --user --no-ena
 [ -x "$test_home/.local/lib/xfce-plasma/xfce-plasma-settings-ui" ]
 [ -f "$test_home/.local/share/applications/xfce-plasma-settings.desktop" ]
 [ -x "$test_home/.local/bin/restart-animated-wallpaper-renderer" ]
+[ -f "$test_home/.local/share/xfce-plasma/assets/thumbnails/tie-dye.png" ]
+[ -f "$test_home/.local/share/icons/hicolor/scalable/apps/xfce-plasma.svg" ]
+[ -f "$test_home/.local/lib/tie-dye-wallpaper/shaders/tie-dye.meta" ]
 [ -x "$test_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper" ]
 cmp -s "$repo_root/build/xfce-plasma-renderer" "$test_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
 cmp -s "$repo_root/build/xfce-plasma-settings-ui" "$test_home/.local/lib/xfce-plasma/xfce-plasma-settings-ui"

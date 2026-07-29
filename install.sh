@@ -49,6 +49,8 @@ RENDERER_DIR=$PREFIX/lib/tie-dye-wallpaper
 PROJECT_LIB_DIR=$PREFIX/lib/xfce-plasma
 XFDESKTOP_DIR=$PREFIX/opt/xfdesktop-transparent
 APPLICATION_DIR=$DATA_HOME/applications
+ASSET_DIR=$DATA_HOME/xfce-plasma/assets
+ICON_DIR=$DATA_HOME/icons/hicolor/scalable/apps
 AUTOSTART_DIR=$CONFIG_HOME/autostart
 SYSTEMD_DIR=$CONFIG_HOME/systemd/user
 STATE_DIR=$STATE_HOME/xfce-plasma
@@ -103,7 +105,7 @@ validate_owned_path() {
   local path=$1
   validate_home_path "$path"
   case "$path" in
-    "$BIN_DIR"/*|"$RENDERER_DIR"/*|"$PROJECT_LIB_DIR"/*|"$XFDESKTOP_DIR"/*|"$APPLICATION_DIR"/*|"$AUTOSTART_DIR"/*|"$SYSTEMD_DIR"/*) ;;
+    "$BIN_DIR"/*|"$RENDERER_DIR"/*|"$PROJECT_LIB_DIR"/*|"$XFDESKTOP_DIR"/*|"$APPLICATION_DIR"/*|"$ASSET_DIR"/*|"$ICON_DIR"/*|"$AUTOSTART_DIR"/*|"$SYSTEMD_DIR"/*) ;;
     *) printf 'Refusing manifest path outside approved install roots: %s\n' "$path" >&2; return 1 ;;
   esac
 }
@@ -155,6 +157,8 @@ build_desired_manifest() {
   record_desired "$RENDERER_DIR/shader.fs"
   while IFS= read -r file; do record_desired "$RENDERER_DIR/shaders/${file#"$ROOT/runtime/tie-dye-wallpaper/shaders/"}"; done < <(find "$ROOT/runtime/tie-dye-wallpaper/shaders" -type f -print | sort)
   record_desired "$BIN_DIR/picom"
+  while IFS= read -r file; do record_desired "$ASSET_DIR/thumbnails/${file#"$ROOT/assets/thumbnails/"}"; done < <(find "$ROOT/assets/thumbnails" -type f -print | sort)
+  record_desired "$ICON_DIR/xfce-plasma.svg"
   while IFS= read -r file; do record_desired "$XFDESKTOP_DIR/${file#"$ROOT/runtime/xfdesktop-transparent/"}"; done < <(find "$ROOT/runtime/xfdesktop-transparent" -type f -print | sort)
   for file in "$ROOT"/applications/*.desktop; do record_desired "$APPLICATION_DIR/$(basename "$file")"; done
   for file in "$ROOT"/autostart/*.desktop; do record_desired "$AUTOSTART_DIR/$(basename "$file")"; done
@@ -265,6 +269,10 @@ elif [ -s "$CURRENT_SHADER_STATE" ]; then
 fi
 
 install_file "$ROOT/runtime/picom-v13" "$BIN_DIR/picom" 0755
+while IFS= read -r source_file; do
+  install_file "$source_file" "$ASSET_DIR/thumbnails/${source_file#"$ROOT/assets/thumbnails/"}" 0644
+done < <(find "$ROOT/assets/thumbnails" -type f -print | sort)
+install_file "$ROOT/assets/icons/xfce-plasma.svg" "$ICON_DIR/xfce-plasma.svg" 0644
 while IFS= read -r source_file; do
   install_file "$source_file" "$XFDESKTOP_DIR/${source_file#"$ROOT/runtime/xfdesktop-transparent/"}"
 done < <(find "$ROOT/runtime/xfdesktop-transparent" -type f -print | sort)

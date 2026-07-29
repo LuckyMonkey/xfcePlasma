@@ -1,0 +1,7 @@
+id=qr-cube-maze
+display_name=QR Cube Maze
+category=Graphic
+description=Angular black-and-white modules shifting between maze and cube forms.
+author=xfcePlasma project
+thumbnail=qr-cube-maze.png
+sort_order=130

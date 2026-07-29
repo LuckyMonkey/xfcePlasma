@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" height="400" width="400">
+  <!--
+    Copyright (C) 2014-07-19 Kevin L. Durette
+    This work is licensed under a Creative Commons Attribution 4.0 International License.
+   -->
+  <polygon points="0,0, 200,0, 400,200, 300,200, 200,100, 200,200, 100,200, 200,300, 200,400, 0,200, 0,0" style="stroke:none;fill:black;" />
+  <polygon points="400,0, 400,100, 300,0, 400, 0" style="fill:black;stroke:none;" />
+  <polygon points="0,400, 100,400, 0,300, 0, 400" style="fill:black;stroke:none;" />
+</svg>

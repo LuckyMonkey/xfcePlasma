@@ -1,117 +1,44 @@
-#!/usr/bin/env python3
-import os
-import sys
-import subprocess
-import time
+#!/usr/bin/env bash
+set -Eeuo pipefail
 
-os.environ.setdefault('DISPLAY', ':0.0')
-os.environ.setdefault('XAUTHORITY', '/home/freezer/.Xauthority')
-os.environ.setdefault('XDG_RUNTIME_DIR', '/run/user/1000')
-os.environ.setdefault('DBUS_SESSION_BUS_ADDRESS', 'unix:path=/run/user/1000/bus')
+mode=${1:-pulse}
+[ "$#" -eq 0 ] || shift
+case "${1:-}" in
+  black|white) shift ;;
+esac
+command=("$@")
+service=${WALLPAPER_SERVICE:-tie-dye-wallpaper-mvp.service}
+wait_seconds=${GAME_MODE_FADE_WAIT_SECONDS:-1}
 
-try:
-    import gi
-    gi.require_version('Gtk', '3.0')
-    from gi.repository import Gtk, Gdk, GLib
-except Exception:
-    sys.exit(0)
-
-if not Gtk.init_check()[0]:
-    sys.exit(0)
-
-mode = sys.argv[1] if len(sys.argv) > 1 else 'pulse'
-fade_color = os.environ.get('GAME_MODE_FADE_COLOR', 'black').lower()
-command = []
-if len(sys.argv) > 2:
-    if sys.argv[2] in ('black', 'white'):
-        fade_color = sys.argv[2].lower()
-        command = sys.argv[3:]
-    else:
-        command = sys.argv[2:]
-steps = int(os.environ.get('GAME_MODE_FADE_STEPS', '42'))
-interval_ms = int(os.environ.get('GAME_MODE_FADE_INTERVAL_MS', '16'))
-hold_ms = int(os.environ.get('GAME_MODE_FADE_HOLD_MS', '220'))
-command_ran = False
-colors = {
-    'black': (0.0, 0.0, 0.0),
-    'white': (1.0, 1.0, 1.0),
+request_native_fade_out() {
+  local pids=()
+  mapfile -t pids < <(pgrep -f "^([^[:space:]]*/)?tie-dye-wallpaper --wid " || true)
+  if [ "${#pids[@]}" -gt 0 ]; then
+    kill -USR1 "${pids[@]}" 2>/dev/null || true
+    sleep "$wait_seconds"
+  fi
 }
-r, g, b = colors.get(fade_color, colors['black'])
 
-window = Gtk.Window(type=Gtk.WindowType.POPUP)
-window.set_decorated(False)
-window.set_app_paintable(True)
-window.set_keep_above(True)
-window.set_skip_taskbar_hint(True)
-window.set_skip_pager_hint(True)
-window.set_accept_focus(False)
-window.set_focus_on_map(False)
-window.set_type_hint(Gdk.WindowTypeHint.NOTIFICATION)
-window.fullscreen()
+run_command() {
+  [ "${#command[@]}" -eq 0 ] || "${command[@]}"
+}
 
-screen = Gdk.Screen.get_default()
-visual = screen.get_rgba_visual() if screen else None
-if visual:
-    window.set_visual(visual)
-
-alpha = 0.0
-if mode == 'in':
-    alpha = 1.0
-elif mode == 'out':
-    alpha = 0.0
-elif mode == 'pulse':
-    alpha = 0.0
-
-phase = 'up' if mode in ('out', 'pulse') else 'down'
-frame = 0
-
-def draw(_widget, cr):
-    cr.set_source_rgba(r, g, b, max(0.0, min(1.0, alpha)))
-    cr.set_operator(1)  # CAIRO_OPERATOR_OVER
-    cr.paint()
-    return False
-
-window.connect('draw', draw)
-window.show_all()
-
-def run_command_once():
-    global command_ran
-    if command_ran or not command:
-        return
-    command_ran = True
-    try:
-        subprocess.run(command, check=False)
-    except Exception:
-        pass
-
-def tick():
-    global alpha, phase, frame
-    frame += 1
-    t = min(1.0, frame / steps)
-    smooth = t * t * (3 - 2 * t)
-
-    if phase == 'up':
-        alpha = smooth
-        if t >= 1.0:
-            run_command_once()
-            if mode == 'out' and not command:
-                Gtk.main_quit()
-                return False
-            phase = 'hold'
-            frame = 0
-    elif phase == 'hold':
-        if frame * interval_ms >= hold_ms:
-            phase = 'down'
-            frame = 0
-    else:
-        alpha = 1.0 - smooth
-        if t >= 1.0:
-            Gtk.main_quit()
-            return False
-
-    window.queue_draw()
-    return True
-
-GLib.timeout_add(interval_ms, tick)
-GLib.timeout_add(max(3000, steps * interval_ms * 3 + hold_ms + 1000), Gtk.main_quit)
-Gtk.main()
+case "$mode" in
+  out)
+    request_native_fade_out
+    run_command
+    ;;
+  in)
+    run_command
+    systemctl --user start "$service"
+    ;;
+  pulse)
+    request_native_fade_out
+    run_command
+    systemctl --user restart "$service"
+    ;;
+  *)
+    printf "usage: %s {in|out|pulse} [black|white] [command ...]\n" "${0##*/}" >&2
+    exit 2
+    ;;
+esac

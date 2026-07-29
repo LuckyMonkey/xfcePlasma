@@ -5,19 +5,11 @@ PartOf=graphical-session.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/freezer/.local/lib/tie-dye-wallpaper
-Environment=HOME=/home/freezer
-Environment=USER=freezer
-Environment=LOGNAME=freezer
-Environment=DISPLAY=:0.0
-Environment=XAUTHORITY=/home/freezer/.Xauthority
-Environment=XDG_RUNTIME_DIR=/run/user/1000
-Environment=DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+WorkingDirectory=%h/.local/lib/tie-dye-wallpaper
 Environment=__GL_YIELD=USLEEP
 ExecStartPre=-/usr/bin/pkill -x xwinwrap
-ExecStartPre=-/usr/bin/pkill -x xfdesktop
 ExecStartPre=/usr/bin/sleep 1
-ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 /usr/local/bin/xwinwrap -b -s -fs -st -sp -ni -nf -ov -fdt -un -- ./tie-dye-wallpaper --wid WID
+ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 /usr/local/bin/xwinwrap -b -s -fs -st -sp -ni -nf -ov -fdt -un -- %h/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper --wid WID
 Restart=on-failure
 RestartSec=2
 

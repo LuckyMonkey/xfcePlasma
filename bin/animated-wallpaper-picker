@@ -1,14 +1,35 @@
 #!/usr/bin/env bash
-set -u
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+    # shellcheck source=../lib/xfce-plasma-common.sh
+    . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+    # shellcheck source=/dev/null
+    . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
 
 RUNTIME=${WALLPAPER_RUNTIME:-$HOME/.local/lib/tie-dye-wallpaper}
 SHADER_DIR=${WALLPAPER_SHADER_DIR:-$RUNTIME/shaders}
-ACTIVE_SHADER=$RUNTIME/shader.fs
-STATE_DIR=${XDG_STATE_HOME:-$HOME/.local/state}/tie-dye-wallpaper
+USER_SHADER_DIR=${WALLPAPER_USER_SHADER_DIR:-$XFCE_PLASMA_USER_SHADER_DIR}
+ACTIVE_SHADER=${WALLPAPER_ACTIVE_SHADER:-$RUNTIME/shader.fs}
+STATE_DIR=${WALLPAPER_STATE_DIR:-$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR}
 STATE_FILE=$STATE_DIR/current-shader
-SERVICE=${WALLPAPER_SERVICE:-tie-dye-wallpaper-mvp.service}
 
-ORDER='tie-dye.fs motion-halftone.fs qr-cube-maze.fs sky-water-wave.fs kaleidoscope-tunnel.fs aurora-ribbons.fs plasma-lava.fs deep-ocean.fs'
+ORDER=(
+    tie-dye.fs
+    motion-halftone.fs
+    qr-cube-maze.fs
+    sky-water-wave.fs
+    kaleidoscope-tunnel.fs
+    aurora-ribbons.fs
+    plasma-lava.fs
+    deep-ocean.fs
+    red-forest.fs
+    boku-city.fs
+    ricky.fs
+)
 
 label_for() {
     case "$1" in
@@ -18,6 +39,9 @@ label_for() {
         aurora-ribbons.fs) printf 'Aurora Ribbons';;
         plasma-lava.fs) printf 'Plasma Lava';;
         deep-ocean.fs) printf 'Deep Ocean';;
+        red-forest.fs) printf 'Red Forest';;
+        boku-city.fs) printf 'Boku City';;
+        ricky.fs) printf 'Ricky';;
         *) basename "$1" .fs | sed 's/-/ /g; s/\b\(.\)/\u\1/g';;
     esac
 }
@@ -26,88 +50,205 @@ notify() {
     command -v notify-send >/dev/null 2>&1 && notify-send "Animated wallpaper" "$1" >/dev/null 2>&1 || true
 }
 
-available() {
-    for name in $ORDER; do
-        [ -f "$SHADER_DIR/$name" ] && printf '%s\n' "$name"
+valid_shader_name() {
+    case "$1" in
+        ''|*/*|.|..|[.-]*|*[!A-Za-z0-9._\ -]*|*.fs.fs) return 1;;
+        *.fs) return 0;;
+        *) return 1;;
+    esac
+}
+
+shader_path() {
+    local name=$1
+    valid_shader_name "$name" || return 1
+    if [ -f "$SHADER_DIR/$name" ]; then
+        printf '%s\n' "$SHADER_DIR/$name"
+    elif [ -f "$USER_SHADER_DIR/$name" ]; then
+        printf '%s\n' "$USER_SHADER_DIR/$name"
+    else
+        return 1
+    fi
+}
+
+editable_shader_path() {
+    valid_shader_name "$1" || {
+        printf 'Invalid shader name: %s\n' "$1" >&2
+        return 1
+    }
+    shader_path "$1" || {
+        printf 'Shader not found: %s\n' "$1" >&2
+        return 1
+    }
+}
+
+is_ordered() {
+    local name=$1 item
+    for item in "${ORDER[@]}"; do
+        [ "$item" = "$name" ] && return 0
     done
-    find "$SHADER_DIR" -maxdepth 1 -type f -name '*.fs' -printf '%f\n' 2>/dev/null | sort | while read -r name; do
-        case " $ORDER " in *" $name "*) ;; *) printf '%s\n' "$name";; esac
+    return 1
+}
+
+available() {
+    local name
+    for name in "${ORDER[@]}"; do
+        shader_path "$name" >/dev/null 2>&1 && printf '%s\n' "$name"
+    done
+    {
+        local directory
+        for directory in "$SHADER_DIR" "$USER_SHADER_DIR"; do
+            [ ! -d "$directory" ] || find "$directory" -maxdepth 1 -type f -name '*.fs' -printf '%f\n'
+        done
+        true
+    } 2>/dev/null | sort -u | while IFS= read -r name; do
+        is_ordered "$name" || printf '%s\n' "$name"
     done
 }
 
 current() {
-    if [ -s "$STATE_FILE" ] && [ -f "$SHADER_DIR/$(cat "$STATE_FILE")" ]; then
-        cat "$STATE_FILE"
-    elif cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/tie-dye.fs" 2>/dev/null; then
-        printf 'tie-dye.fs\n'
-    else
-        active_hash=$(sha256sum "$ACTIVE_SHADER" 2>/dev/null | awk '{print $1}')
-        for name in $(available); do
-            [ "$active_hash" = "$(sha256sum "$SHADER_DIR/$name" 2>/dev/null | awk '{print $1}')" ] && { printf '%s\n' "$name"; return; }
-        done
-        printf 'tie-dye.fs\n'
+    local saved active_hash name shader_hash source
+    if [ -s "$STATE_FILE" ]; then
+        saved=$(cat "$STATE_FILE")
+        if shader_path "$saved" >/dev/null 2>&1; then
+            printf '%s\n' "$saved"
+            return
+        fi
     fi
+
+    if cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/tie-dye.fs" 2>/dev/null; then
+        printf 'tie-dye.fs\n'
+        return
+    fi
+
+    active_hash=$(sha256sum "$ACTIVE_SHADER" 2>/dev/null | awk '{print $1}' || true)
+    while IFS= read -r name; do
+        source=$(shader_path "$name" || true)
+        shader_hash=$(sha256sum "$source" 2>/dev/null | awk '{print $1}' || true)
+        if [ -n "$active_hash" ] && [ "$active_hash" = "$shader_hash" ]; then
+            printf '%s\n' "$name"
+            return
+        fi
+    done < <(available)
+    available | head -n 1
 }
 
 select_relative() {
-    direction=$1
+    local direction=$1 cur count index i name
+    local shaders=()
     cur=$(current)
-    set -- $(available)
-    count=$#
+    while IFS= read -r name; do shaders+=("$name"); done < <(available)
+    count=${#shaders[@]}
     [ "$count" -gt 0 ] || exit 1
-    i=1
-    index=1
-    for name in "$@"; do
-        [ "$name" = "$cur" ] && index=$i
-        i=$((i + 1))
+    index=0
+    for i in "${!shaders[@]}"; do
+        [ "${shaders[$i]}" = "$cur" ] && index=$i
     done
     if [ "$direction" = next ]; then
-        index=$((index + 1)); [ "$index" -le "$count" ] || index=1
+        index=$(( (index + 1) % count ))
     else
-        index=$((index - 1)); [ "$index" -ge 1 ] || index=$count
+        index=$(( index - 1 ))
+        [ "$index" -ge 0 ] || index=$((count - 1))
     fi
-    i=1
-    for name in "$@"; do
-        [ "$i" -eq "$index" ] && { printf '%s\n' "$name"; return; }
-        i=$((i + 1))
-    done
+    printf '%s\n' "${shaders[$index]}"
 }
 
 choose_gui() {
+    local cur name label active
+    local rows=()
     cur=$(current)
-    rows=''
-    for name in $(available); do
+    while IFS= read -r name; do
         label=$(label_for "$name")
         if [ "$name" = "$cur" ]; then active=TRUE; else active=FALSE; fi
-        rows="$rows $active '$label' '$name'"
-    done
+        rows+=("$active" "$label" "$name")
+    done < <(available)
     if command -v zenity >/dev/null 2>&1; then
-        eval zenity --list --radiolist --title="Animated wallpaper" --text="Choose wallpaper" --column="" --column="Wallpaper" --column="File" --hide-column=3 --print-column=3 $rows 2>/dev/null
+        zenity --list --radiolist --title="Animated wallpaper" --text="Choose wallpaper" \
+            --column="" --column="Wallpaper" --column="File" --hide-column=3 --print-column=3 \
+            "${rows[@]}" 2>/dev/null
     elif command -v rofi >/dev/null 2>&1; then
-        available | while read -r name; do label_for "$name"; printf '\t%s\n' "$name"; done | rofi -dmenu -p "Wallpaper" | awk -F '\t' '{print $2}'
+        available | while IFS= read -r name; do label_for "$name"; printf '\t%s\n' "$name"; done |
+            rofi -dmenu -p "Wallpaper" | awk -F '\t' '{print $2}'
     else
         available
     fi
 }
 
 apply_shader() {
-    name=$1
-    src=$SHADER_DIR/$name
-    [ -f "$src" ] || { notify "Missing shader: $name"; exit 1; }
-    mkdir -p "$STATE_DIR"
-    cp -f "$src" "$ACTIVE_SHADER"
-    printf '%s\n' "$name" > "$STATE_FILE"
-    systemctl --user restart "$SERVICE" >/tmp/animated-wallpaper-picker.log 2>&1 || true
-    sleep 1
-    systemctl --user restart xfdesktop-transparent.service >>/tmp/animated-wallpaper-picker.log 2>&1 || true
+    local name=$1 src
+    src=$(shader_path "$name" || true)
+    [ -f "$src" ] || { notify "Missing shader: $name"; return 1; }
+    xfce_plasma_mkdirs
+    mkdir -p "$STATE_DIR" "$(dirname "$ACTIVE_SHADER")"
+    xfce_plasma_atomic_copy "$src" "$ACTIVE_SHADER"
+    xfce_plasma_atomic_write "$STATE_FILE" "$name"
     notify "$(label_for "$name")"
+}
+
+user_add() {
+    local src=$1 name
+    [ -f "$src" ] || { printf 'Shader file not found: %s\n' "$src" >&2; return 1; }
+    name=$(basename "$src")
+    valid_shader_name "$name" || { printf 'Shader must use a safe .fs filename\n' >&2; return 1; }
+    [ ! -e "$SHADER_DIR/$name" ] || { printf 'Built-in shader already exists: %s\n' "$name" >&2; return 1; }
+    xfce_plasma_atomic_copy "$src" "$USER_SHADER_DIR/$name"
+    printf '%s\n' "$name"
+}
+
+create_shader() {
+    local name=$1 template=${2:-tie-dye.fs} source
+    valid_shader_name "$name" || { printf 'Use a simple filename ending in .fs\n' >&2; return 1; }
+    [ ! -e "$SHADER_DIR/$name" ] && [ ! -e "$USER_SHADER_DIR/$name" ] || {
+        printf 'Shader already exists: %s\n' "$name" >&2; return 1
+    }
+    source=$(shader_path "$template" || true)
+    [ -f "$source" ] || { printf 'Template shader not found: %s\n' "$template" >&2; return 1; }
+    xfce_plasma_atomic_copy "$source" "$USER_SHADER_DIR/$name"
+    printf '%s\n' "$name"
+}
+
+replace_shader() {
+    local name=$1 source=$2 destination selected
+    [ -f "$source" ] || { printf 'Shader source not found: %s\n' "$source" >&2; return 1; }
+    destination=$(editable_shader_path "$name")
+    xfce_plasma_atomic_copy "$source" "$destination"
+    selected=$(current)
+    if [ "$selected" = "$name" ]; then xfce_plasma_atomic_copy "$destination" "$ACTIVE_SHADER"; fi
+    printf '%s\n' "$name"
+}
+
+remove_shader() {
+    local name=$1 path selected replacement count
+    path=$(editable_shader_path "$name")
+    count=$(available | wc -l)
+    [ "$count" -gt 1 ] || { printf 'The last shader cannot be removed\n' >&2; return 1; }
+    selected=$(current)
+    if [ "$selected" = "$name" ]; then
+        replacement=$(select_relative next)
+        [ "$replacement" != "$name" ] || return 1
+        apply_shader "$replacement"
+    fi
+    rm -f -- "$path"
+    printf '%s\n' "$name"
+}
+
+read_shader() {
+    local path
+    path=$(editable_shader_path "$1")
+    cat -- "$path"
 }
 
 case "${1:-pick}" in
     next|--next) choice=$(select_relative next);;
     prev|previous|--prev|--previous) choice=$(select_relative prev);;
+    set|--set) shift; choice=${1:-};;
     list|--list) available; exit 0;;
     current|--current) current; exit 0;;
+    source|--source) shift; editable_shader_path "${1:-}"; exit $?;;
+    read|--read) shift; read_shader "${1:-}"; exit $?;;
+    user-add|--user-add) shift; user_add "${1:-}"; exit $?;;
+    create|--create) shift; create_shader "${1:-}" "${2:-tie-dye.fs}"; exit $?;;
+    replace|--replace) shift; replace_shader "${1:-}" "${2:-}"; exit $?;;
+    remove|--remove) shift; remove_shader "${1:-}"; exit $?;;
     pick|--pick) choice=$(choose_gui);;
     *.fs) choice=$1;;
     *) choice=$(choose_gui);;

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+verbose=false
+case "${1:-}" in "") ;; --verbose) verbose=true ;; -h|--help) printf "usage: %s [--verbose]\n" "${0##*/}"; exit 0 ;; *) printf "unknown option: %s\n" "$1" >&2; exit 2 ;; esac
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
+
+fatal=0
+ok() { printf "OK    %s\n" "$*"; }
+warn() { printf "WARN  %s\n" "$*"; }
+fail() { printf "FAIL  %s\n" "$*"; fatal=$((fatal + 1)); }
+check_command() { local name=$1 required=${2:-yes}; if command -v "$name" >/dev/null 2>&1; then ok "$name"; elif [ "$required" = yes ]; then fail "$name is missing"; else warn "$name is unavailable"; fi; }
+check_elf() { local label=$1 path=$2; if [ ! -x "$path" ]; then fail "$label is missing: $path"; elif ldd "$path" 2>/dev/null | grep -q "not found"; then fail "$label has missing shared libraries"; [ "$verbose" = false ] || ldd "$path" | grep "not found"; else ok "$label dependencies"; fi; }
+check_writable() { local label=$1 path=$2 probe=$2; while [ ! -e "$probe" ] && [ "$probe" != / ]; do probe=$(dirname "$probe"); done; if [ -w "$probe" ]; then ok "$label writable"; else fail "$label is not writable: $path"; fi; }
+service_status() { local unit=$1; if systemctl --user is-active --quiet "$unit" 2>/dev/null; then ok "$unit active"; else warn "$unit inactive"; fi; }
+process_count() { local label=$1 count=$2; if [ "$count" -gt 1 ]; then warn "$label has $count processes"; elif [ "$count" -eq 1 ]; then ok "$label process count"; else warn "$label is not running"; fi; }
+
+printf "xfcePlasma doctor\n"
+if [ "${XDG_SESSION_TYPE:-}" = wayland ]; then fail "Wayland session is unsupported"; elif [ -n "${DISPLAY:-}" ]; then ok "X11 display ${DISPLAY}"; else fail "DISPLAY is not set"; fi
+case "${XDG_CURRENT_DESKTOP:-}" in *XFCE*|*Xfce*|*xfce*) ok "XFCE session" ;; *) if pgrep -x xfce4-session >/dev/null 2>&1; then ok "XFCE session process"; else warn "XFCE session was not detected"; fi ;; esac
+[ -r "$XFCE_PLASMA_XAUTHORITY" ] && ok "Xauthority readable" || warn "Xauthority not readable: $XFCE_PLASMA_XAUTHORITY"
+case "$XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS" in unix:path=*) [ -S "${XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS#unix:path=}" ] && ok "user DBus socket" || fail "user DBus socket is missing" ;; *) warn "unrecognized DBus address" ;; esac
+if systemctl --user show-environment >/dev/null 2>&1; then ok "systemd user manager"; else fail "systemd user manager unavailable"; fi
+
+for command_name in xwinwrap xrandr xprop xfconf-query wmctrl notify-send xdotool import convert; do check_command "$command_name" yes; done
+if command -v zenity >/dev/null 2>&1; then ok "zenity picker UI"; elif command -v rofi >/dev/null 2>&1; then ok "rofi picker UI"; else warn "neither zenity nor rofi is available"; fi
+check_command picom no
+
+renderer="$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper"
+xfdesktop_bin="$XFCE_PLASMA_XFDESKTOP_DIR/bin/xfdesktop"
+check_elf "renderer" "$renderer"
+check_elf "settings UI" "$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
+check_elf "patched xfdesktop" "$xfdesktop_bin"
+[ -x /usr/local/bin/xwinwrap ] && ok "xwinwrap executable" || fail "xwinwrap executable missing at /usr/local/bin/xwinwrap"
+
+shader_dir="$XFCE_PLASMA_RENDERER_DIR/shaders"
+user_shader_dir="$XFCE_PLASMA_USER_SHADER_DIR"
+selected_file="$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR/current-shader"
+shader_count=0
+for directory in "$shader_dir" "$user_shader_dir"; do
+  if [ -d "$directory" ]; then count=$(find "$directory" -maxdepth 1 -type f -name "*.fs" | wc -l); shader_count=$((shader_count + count)); fi
+done
+[ "$shader_count" -gt 0 ] && ok "$shader_count shader profiles" || fail "no shader profiles found"
+if [ -s "$selected_file" ]; then
+  selected=$(cat "$selected_file")
+  if [ -r "$shader_dir/$selected" ] || [ -r "$user_shader_dir/$selected" ]; then ok "selected shader: $selected"; else fail "selected shader is unreadable: $selected"; fi
+else
+  warn "selected shader state is missing"
+fi
+
+service_status tie-dye-wallpaper-mvp.service
+service_status xfdesktop-transparent.service
+service_status game-mode-guard.service
+service_status picom-effects.service
+process_count xwinwrap "$(pgrep -xc xwinwrap || true)"
+process_count xfdesktop "$(pgrep -xc xfdesktop || true)"
+process_count picom "$(pgrep -xc picom || true)"
+renderer_count=$(pgrep -fc "^([^[:space:]]*/)?tie-dye-wallpaper --wid " || true); process_count renderer "$renderer_count"
+
+if command -v xrandr >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then connected=$(xrandr --query 2>/dev/null | awk '/ connected/{count++} END{print count+0}'); [ "$connected" -gt 0 ] && ok "$connected connected display(s)" || warn "no connected displays reported"; fi
+check_writable "config directory" "$XFCE_PLASMA_CONFIG_DIR"
+check_writable "state directory" "$XFCE_PLASMA_STATE_DIR"
+check_writable "cache directory" "$XFCE_PLASMA_CACHE_DIR"
+[ ! -e "$XFCE_PLASMA_RUN_DIR/game-mode" ] || warn "game-mode state is currently active or stale"
+
+if [ "$verbose" = true ]; then printf "\nResolved paths\n  prefix: %s\n  config: %s\n  state: %s\n  cache: %s\n  runtime: %s\n  renderer: %s\n  xfdesktop: %s\n" "$XFCE_PLASMA_PREFIX" "$XFCE_PLASMA_CONFIG_DIR" "$XFCE_PLASMA_STATE_DIR" "$XFCE_PLASMA_CACHE_DIR" "$XFCE_PLASMA_RUN_DIR" "$renderer" "$xfdesktop_bin"; fi
+printf "\nResult: %s blocking problem(s)\n" "$fatal"
+[ "$fatal" -eq 0 ]

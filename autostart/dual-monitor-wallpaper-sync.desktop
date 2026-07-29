@@ -2,7 +2,7 @@
 Type=Application
 Name=Dual-Monitor Wallpaper Sync
 Comment=Keep both XFCE monitors synchronized in spanning wallpaper mode
-Exec=/home/freezer/.local/bin/dual-monitor-wallpaper-sync
+Exec=sh -c "exec \"\\$HOME/.local/bin/dual-monitor-wallpaper-sync\""
 OnlyShowIn=XFCE;
 NoDisplay=true
 X-GNOME-Autostart-enabled=true

@@ -73,6 +73,7 @@ PRIMARY GOALS
 8. Improve game-mode detection and restoration.
 9. Preserve the lightweight architecture.
 10. Document exactly what is open source, what is separately distributed artwork, and what remains precompiled.
+11. Provide one unified central settings panel for the complete desktop stack.
 
 PHASE 1 — AUDIT
 
@@ -311,6 +312,11 @@ Do not place the author's current artistic shaders in the public examples direct
 
 PHASE 6 — PRIVATE ARTWORK SEPARATION
 
+Owner decision (2026-07-29): defer this phase until later. Do not split the
+private artwork in the current milestone, and do not build a shader plugin/art-pack
+architecture for the open-source release unless the owner revisits that decision.
+Local GLSL create/import/edit/remove controls remain supported by the unified panel.
+
 The public repository should support an engine/art separation.
 
 Desired conceptual layout:
@@ -396,6 +402,12 @@ Clearly state:
 
 PHASE 7 — LIVE SHADER RELOAD
 
+Progress (2026-07-29): implemented atomic picker updates, inotify-based C
+renderer reload, candidate validation with current-shader retention, fade
+transitions, a built-in startup fallback, user-add support, and regression
+tests. Live verification confirmed that xwinwrap, renderer, xfdesktop, and the
+wallpaper X window all keep the same IDs during a shader change.
+
 Improve shader selection so changing shaders does not require two full service restarts.
 
 Preferred behavior:
@@ -468,7 +480,51 @@ The renderer should watch the state file with inotify or accept a signal/IPC com
 
 Use a simple key=value config format, not JSON.
 
+PHASE 8A — UNIFIED SETTINGS PANEL
+
+Progress (2026-07-29): one native GTK 3 window backed by the Bash CLI now
+controls wallpaper selection, live source editing, shader create/import/remove,
+speed/freeze, epilepsy and motion-sickness guidance, real editable XFCE
+keybindings with conflict protection, game mode, Picom, transparent xfdesktop,
+monitors, recovery, and diagnostics. Tabs were made denser without splitting the
+project into separate panels. The native UI builds with strict warnings and has no
+Python dependency.
+
+Create one central settings command and panel for the complete xfcePlasma stack.
+
+The user must not need to open a collection of separate settings panels. The unified panel must provide a single entry point for:
+
+- wallpaper selection and user shader management
+- animation speed, freeze, and restore
+- game-mode settings and current state
+- Picom effects and compositor state
+- transparent xfdesktop state
+- monitor synchronization
+- service status and recovery actions
+- diagnostics and dependency status
+- project-specific keyboard shortcuts
+
+Preferred implementation:
+
+- Bash for invoking existing control commands, reading simple key=value settings, and an initial short-lived Zenity or rofi interface
+- C with GTK/X11 only if a responsive persistent unified window cannot be kept reliable and understandable in shell
+- no Python, web UI, Electron, Node.js, or multiple independent project settings applications
+
+Create one executable, preferably:
+
+    xfce-plasma-settings
+
+All settings changes must delegate to the same underlying commands and files used by the CLI. Do not duplicate configuration logic inside the UI. The panel must remain optional; every operation must still be possible from the command line.
+
 PHASE 9 — GAME MODE
+
+Progress (2026-07-29): game entry now captures the renderer window, crops one
+dark/desaturated static image per discovered monitor, installs those images as the
+actual XFCE wallpaper, and stops animation only after the static frame is visible.
+Exit fades the raster to black, restores the previous XFCE wallpaper properties,
+and lets the native renderer fade back in. Wallpaper, Picom, and XFWM compositor
+states are recorded and restored exactly. Live two-monitor capture/restore kept the
+xfdesktop and renderer PIDs stable.
 
 Refactor game-mode detection.
 
@@ -971,6 +1027,7 @@ The work is complete only when:
 18. xfce-plasma-doctor identifies missing dependencies clearly.
 19. README accurately distinguishes source-built and binary-only components.
 20. The repository remains lean and understandable.
+21. One unified settings panel controls the project; no collection of separate project panels is required.
 
 IMPLEMENTATION ORDER
 
@@ -984,6 +1041,7 @@ Follow this order:
 6. Replace Python.
 7. Improve installer and service templates.
 8. Add diagnostics.
+8a. Add the single unified settings panel after its underlying control commands are stable.
 9. Add renderer source/build support.
 10. Add live shader reload.
 11. Separate private artwork.

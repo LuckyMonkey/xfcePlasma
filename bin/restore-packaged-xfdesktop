@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-set -euo pipefail
-export HOME=/home/freezer
-export USER=freezer
-export LOGNAME=freezer
-export DISPLAY=${DISPLAY:-:0.0}
-export XAUTHORITY=/home/freezer/.Xauthority
-export XDG_RUNTIME_DIR=/run/user/1000
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
-/home/freezer/.local/bin/stop-custom-xfdesktop || true
-if ! pgrep -x xfdesktop >/dev/null 2>&1; then
-  LOG_DIR="/home/freezer/.cache/xfcePlasma/logs"
-  mkdir -p "$LOG_DIR"
-  LOG="$LOG_DIR/restore-packaged-xfdesktop-$(date +%Y%m%d-%H%M%S).log"
-  nohup /usr/bin/xfdesktop --disable-wm-check >"$LOG" 2>&1 &
-  echo "$!" > /tmp/xfdesktop-packaged.pid
-  echo "Restored packaged xfdesktop PID $! log $LOG"
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
 else
-  echo "xfdesktop already running"
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
+xfce_plasma_export_session_env
+xfce_plasma_mkdirs
+"$XFCE_PLASMA_BIN_DIR/stop-custom-xfdesktop" || true
+if ! pgrep -x xfdesktop >/dev/null 2>&1; then
+  log="$XFCE_PLASMA_LOG_DIR/restore-packaged-xfdesktop-$(date +%Y%m%d-%H%M%S).log"
+  nohup /usr/bin/xfdesktop --disable-wm-check >"$log" 2>&1 &
+  xfce_plasma_atomic_write "$XFCE_PLASMA_RUN_DIR/xfdesktop-packaged.pid" "$!"
+  printf "Restored packaged xfdesktop PID %s log %s\n" "$!" "$log"
+else
+  printf "xfdesktop already running\n"
 fi

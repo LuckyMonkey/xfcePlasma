@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Tie Dye GPU Wallpaper
-Exec=/home/freezer/.local/bin/tie-dye-wallpaper
+Name=Animated Wallpaper + XFCE Desktop Icons
+Exec=sh -c "exec \"\\$HOME/.local/bin/start-animated-wallpaper-with-xfdesktop-icons\""
 Terminal=false
-X-GNOME-Autostart-enabled=false
+X-GNOME-Autostart-enabled=true

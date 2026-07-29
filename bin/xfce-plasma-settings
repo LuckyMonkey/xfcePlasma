@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
+xfce_plasma_export_session_env
+
+run_bin() { "$XFCE_PLASMA_BIN_DIR/$1" "${@:2}"; }
+service_status() { systemctl --user is-active "$1" 2>/dev/null || true; }
+
+settings_ui_path() {
+  if [ -n "${XFCE_PLASMA_SETTINGS_UI:-}" ]; then printf '%s\n' "$XFCE_PLASMA_SETTINGS_UI"
+  elif [ -x "$script_dir/../build/xfce-plasma-settings-ui" ]; then printf '%s\n' "$script_dir/../build/xfce-plasma-settings-ui"
+  else printf '%s\n' "$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
+  fi
+}
+
+run_gui() {
+  local ui
+  ui=$(settings_ui_path)
+  [ -x "$ui" ] || { printf 'Native settings UI is missing: %s\nBuild it with: make settings\n' "$ui" >&2; exit 1; }
+  exec "$ui"
+}
+
+game_control() {
+  case "${1:-status}" in
+    status) service_status game-mode-guard.service;;
+    start|enable) systemctl --user enable --now game-mode-guard.service;;
+    stop|disable) systemctl --user disable --now game-mode-guard.service;;
+    restart) systemctl --user restart game-mode-guard.service;;
+    *) printf 'game expects status, start, stop, or restart\n' >&2; return 2;;
+  esac
+}
+
+picom_start() {
+  if systemctl --user is-active --quiet picom-effects.service; then return 0; fi
+  systemctl --user reset-failed picom-effects.service >/dev/null 2>&1 || true
+  systemd-run --user --unit=picom-effects --collect "$XFCE_PLASMA_BIN_DIR/start-picom-effects" >/dev/null
+}
+
+picom_control() {
+  case "${1:-status}" in
+    status) service_status picom-effects.service;; start) picom_start;;
+    stop) systemctl --user stop picom-effects.service;;
+    restart) systemctl --user stop picom-effects.service >/dev/null 2>&1 || true; picom_start;;
+    *) printf 'picom expects status, start, stop, or restart\n' >&2; return 2;;
+  esac
+}
+
+desktop_control() {
+  case "${1:-status}" in
+    status) service_status xfdesktop-transparent.service;; start) systemctl --user start xfdesktop-transparent.service;;
+    stop) systemctl --user stop xfdesktop-transparent.service;; restart) systemctl --user restart xfdesktop-transparent.service;;
+    *) printf 'desktop expects status, start, stop, or restart\n' >&2; return 2;;
+  esac
+}
+
+monitor_control() {
+  case "${1:-status}" in
+    status) xrandr --query 2>/dev/null | awk '/ connected/{count++} END{print count+0 " connected"}';;
+    sync) run_bin dual-monitor-wallpaper-sync --once;;
+    *) printf 'monitors expects status or sync\n' >&2; return 2;;
+  esac
+}
+
+shortcut_command() {
+  case "$1" in
+    wallpaper-prev) printf '%s/animated-wallpaper-picker prev\n' "$XFCE_PLASMA_BIN_DIR";;
+    wallpaper-next) printf '%s/animated-wallpaper-picker next\n' "$XFCE_PLASMA_BIN_DIR";;
+    speed-up) printf '%s/animated-wallpaper-speed up\n' "$XFCE_PLASMA_BIN_DIR";;
+    speed-down) printf '%s/animated-wallpaper-speed down\n' "$XFCE_PLASMA_BIN_DIR";;
+    stop-wallpaper) printf '%s/stop-animated-wallpaper\n' "$XFCE_PLASMA_BIN_DIR";;
+    open-settings) printf '%s/xfce-plasma-settings gui\n' "$XFCE_PLASMA_BIN_DIR";;
+    *) printf 'Unknown shortcut action: %s\n' "$1" >&2; return 2;;
+  esac
+}
+
+shortcut_default() {
+  case "$1" in
+    wallpaper-prev) printf '<Primary><Alt><Shift>Left\n';;
+    wallpaper-next) printf '<Primary><Alt><Shift>Right\n';;
+    speed-up) printf '<Primary><Alt><Shift>Up\n';;
+    speed-down) printf '<Primary><Alt><Shift>Down\n';;
+    stop-wallpaper) printf '<Primary><Alt><Shift>F12\n';;
+    open-settings) printf '<Primary><Alt><Shift>s\n';;
+    *) return 2;;
+  esac
+}
+
+shortcut_property_for_command() {
+  local command=$1 line property value
+  while IFS= read -r line; do
+    property=${line%%[[:space:]]*}
+    value=${line#"$property"}
+    value=${value#${value%%[![:space:]]*}}
+    [ "$value" = "$command" ] && { printf '%s\n' "$property"; return 0; }
+  done < <(xfconf-query -c xfce4-keyboard-shortcuts -lv 2>/dev/null || true)
+  return 1
+}
+
+shortcut_get() {
+  local command property
+  command=$(shortcut_command "$1")
+  property=$(shortcut_property_for_command "$command" || true)
+  if [ -n "$property" ]; then printf '%s\n' "${property#/commands/custom/}"; fi
+  return 0
+}
+
+shortcut_clear() {
+  local command property
+  command=$(shortcut_command "$1")
+  property=$(shortcut_property_for_command "$command" || true)
+  if [ -n "$property" ]; then xfconf-query -c xfce4-keyboard-shortcuts -p "$property" -r; fi
+}
+
+shortcut_set() {
+  local action=$1 accelerator=$2 command old_property property existing
+  [ -n "$accelerator" ] && [ "${accelerator#*/}" = "$accelerator" ] || {
+    printf 'Invalid accelerator: %s\n' "$accelerator" >&2; return 2
+  }
+  command=$(shortcut_command "$action")
+  property="/commands/custom/$accelerator"
+  existing=$(xfconf-query -c xfce4-keyboard-shortcuts -p "$property" 2>/dev/null || true)
+  if [ -n "$existing" ] && [ "$existing" != "$command" ]; then
+    printf 'Shortcut is already assigned to: %s\n' "$existing" >&2
+    return 1
+  fi
+  old_property=$(shortcut_property_for_command "$command" || true)
+  if [ -n "$old_property" ] && [ "$old_property" != "$property" ]; then
+    xfconf-query -c xfce4-keyboard-shortcuts -p "$old_property" -r
+  fi
+  xfconf-query -c xfce4-keyboard-shortcuts -p "$property" -n -t string -s "$command"
+  printf '%s\n' "$accelerator"
+}
+
+shortcut_list() {
+  local action current
+  for action in wallpaper-prev wallpaper-next speed-up speed-down stop-wallpaper open-settings; do
+    current=$(shortcut_get "$action")
+    printf '%s\t%s\n' "$action" "${current:-unassigned}"
+  done
+}
+
+shortcut_control() {
+  local verb=${1:-list} action=${2:-}
+  case "$verb" in
+    list) shortcut_list;;
+    get) shortcut_command "$action" >/dev/null; shortcut_get "$action";;
+    set) shortcut_set "$action" "${3:-}";;
+    clear) shortcut_command "$action" >/dev/null; shortcut_clear "$action";;
+    reset) shortcut_set "$action" "$(shortcut_default "$action")";;
+    *) printf 'shortcuts expects list, get, set, clear, or reset\n' >&2; return 2;;
+  esac
+}
+
+forward_or_default() { local command=$1 default=$2; shift 2; if [ "$#" -eq 0 ]; then set -- "$default"; fi; run_bin "$command" "$@"; }
+
+case "${1:-gui}" in
+  gui|--gui) run_gui;;
+  status|diagnostics) shift || true; run_bin xfce-plasma-doctor "${@}";;
+  wallpaper) shift; forward_or_default animated-wallpaper-picker pick "$@";;
+  speed) shift; forward_or_default animated-wallpaper-speed current "$@";;
+  shortcuts) shift; shortcut_control "$@";;
+  game) shift; game_control "${1:-status}";;
+  picom) shift; picom_control "${1:-status}";;
+  desktop) shift; desktop_control "${1:-status}";;
+  monitors) shift; monitor_control "${1:-status}";;
+  recover) run_bin start-transparent-xfdesktop-session;;
+  *) printf 'usage: %s [gui|diagnostics|wallpaper ACTION|speed ACTION|shortcuts ACTION|game ACTION|picom ACTION|desktop ACTION|monitors ACTION|recover]\n' "${0##*/}" >&2; exit 2;;
+esac

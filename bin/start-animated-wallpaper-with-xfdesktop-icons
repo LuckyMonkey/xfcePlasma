@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-set -u
-export DISPLAY=${DISPLAY:-:0.0}
-export XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
-export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/1000}
-export DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/1000/bus}
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
+xfce_plasma_export_session_env
+xfce_plasma_mkdirs
 sleep "${WALLPAPER_STACK_DELAY:-8}"
-systemctl --user restart tie-dye-wallpaper-mvp.service >/tmp/tie-dye-wallpaper-stack.log 2>&1 || true
-sleep 1
-systemctl --user restart xfdesktop-transparent.service >>/tmp/tie-dye-wallpaper-stack.log 2>&1 || true
+xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log" 2>&1 || true

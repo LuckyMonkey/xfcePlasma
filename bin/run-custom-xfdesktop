@@ -1,28 +1,13 @@
 #!/usr/bin/env bash
-set -euo pipefail
-BIN="/home/freezer/.local/opt/xfdesktop-transparent/bin/xfdesktop"
-LOG_DIR="/home/freezer/.cache/xfcePlasma/logs"
-mkdir -p "$LOG_DIR"
-export HOME=/home/freezer
-export USER=freezer
-export LOGNAME=freezer
-export DISPLAY=${DISPLAY:-:0.0}
-export XAUTHORITY=/home/freezer/.Xauthority
-export XDG_RUNTIME_DIR=/run/user/1000
-export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
-LOG="$LOG_DIR/custom-xfdesktop-$(date +%Y%m%d-%H%M%S).log"
-if [[ ! -x "$BIN" ]]; then
-  echo "Custom xfdesktop not executable: $BIN" >&2
-  exit 1
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
 fi
-if pgrep -x xfdesktop >/dev/null 2>&1; then
-  while read -r pid cmd; do
-    case "$cmd" in
-      xfdesktop|/usr/bin/xfdesktop*|"$BIN"*) kill "$pid" ;;
-    esac
-  done < <(pgrep -af '(^|/)xfdesktop($| )' || true)
-  sleep 1
-fi
-nohup "$BIN" --disable-wm-check >"$LOG" 2>&1 &
-echo "$!" > /tmp/xfdesktop-custom.pid
-echo "Started custom xfdesktop PID $! log $LOG"
+xfce_plasma_export_session_env
+xfce_plasma_mkdirs
+systemctl --user restart xfdesktop-transparent.service
+printf "Custom xfdesktop service restarted\n"

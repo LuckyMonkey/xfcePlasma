@@ -28,6 +28,7 @@ sync_from() {
 
 # Make the current primary-display selection authoritative at startup.
 sync_from "$DP_BASE" "$HDMI_BASE"
+[ "${1:-}" != "--once" ] || exit 0
 
 xfconf-query -c "$CHANNEL" -m 2>/dev/null | while IFS= read -r event; do
     case "$event" in

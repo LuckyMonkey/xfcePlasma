@@ -1,6 +1,10 @@
 #include <gtk/gtk.h>
 #include <glib/gstdio.h>
 
+#ifndef XFCE_PLASMA_VERSION
+#define XFCE_PLASMA_VERSION "unknown"
+#endif
+
 #define SHORTCUT_COUNT 6
 
 typedef struct SettingsApp {
@@ -497,7 +501,10 @@ static GtkWidget *diagnostics_page(SettingsApp *app) {
 static gboolean refresh_timeout(gpointer data) { refresh_status(data); return G_SOURCE_CONTINUE; }
 
 int main(int argc, char **argv) {
-    if (argc > 1 && g_strcmp0(argv[1], "--version") == 0) { g_print("xfce-plasma-settings-ui 2\n"); return 0; }
+    if (argc > 1 && g_strcmp0(argv[1], "--version") == 0) {
+        g_print("xfce-plasma-settings-ui %s\n", XFCE_PLASMA_VERSION);
+        return 0;
+    }
     gtk_init(&argc, &argv);
     SettingsApp app = {0};
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);

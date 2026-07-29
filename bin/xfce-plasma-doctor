@@ -2,7 +2,19 @@
 set -Eeuo pipefail
 
 verbose=false
-case "${1:-}" in "") ;; --verbose) verbose=true ;; -h|--help) printf "usage: %s [--verbose]\n" "${0##*/}"; exit 0 ;; *) printf "unknown option: %s\n" "$1" >&2; exit 2 ;; esac
+project_root=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --verbose) verbose=true ;;
+    --project-root)
+      [ "$#" -ge 2 ] || { printf '--project-root requires a path\n' >&2; exit 2; }
+      project_root=$2
+      shift ;;
+    -h|--help) printf "usage: %s [--verbose] [--project-root PATH]\n" "${0##*/}"; exit 0 ;;
+    *) printf "unknown option: %s\n" "$1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
@@ -21,7 +33,22 @@ check_writable() { local label=$1 path=$2 probe=$2; while [ ! -e "$probe" ] && [
 service_status() { local unit=$1; if systemctl --user is-active --quiet "$unit" 2>/dev/null; then ok "$unit active"; else warn "$unit inactive"; fi; }
 process_count() { local label=$1 count=$2; if [ "$count" -gt 1 ]; then warn "$label has $count processes"; elif [ "$count" -eq 1 ]; then ok "$label process count"; else warn "$label is not running"; fi; }
 
+project_version=$(xfce_plasma_project_version)
+install_origin=$(xfce_plasma_install_origin)
+renderer="$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper"
+settings_ui="$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
 printf "xfcePlasma doctor\n"
+printf "Project version: %s\nInstall origin: %s\n" "$project_version" "$install_origin"
+if [ -n "$project_root" ]; then
+  if [ -r "$project_root/VERSION" ]; then printf "Source version: %s (%s)\n" "$(sed -n '1p' "$project_root/VERSION")" "$project_root"
+  else warn "project root has no VERSION: $project_root"; fi
+fi
+case $install_origin in
+  built-from-source|bundled-runtime) renderer_version=$(if [ -x "$renderer" ]; then "$renderer" --version 2>/dev/null | sed -n '1p'; else printf 'missing'; fi) ;;
+  *) renderer_version='unavailable (legacy install)' ;;
+esac
+printf "Renderer path: %s\nRenderer version: %s\n" "$renderer" "$renderer_version"
+printf "Settings UI path: %s\nSettings UI version: %s\n" "$settings_ui" "$(if [ -x "$settings_ui" ]; then "$settings_ui" --version 2>/dev/null | sed -n '1p'; else printf 'missing'; fi)"
 if [ "${XDG_SESSION_TYPE:-}" = wayland ]; then fail "Wayland session is unsupported"; elif [ -n "${DISPLAY:-}" ]; then ok "X11 display ${DISPLAY}"; else fail "DISPLAY is not set"; fi
 case "${XDG_CURRENT_DESKTOP:-}" in *XFCE*|*Xfce*|*xfce*) ok "XFCE session" ;; *) if pgrep -x xfce4-session >/dev/null 2>&1; then ok "XFCE session process"; else warn "XFCE session was not detected"; fi ;; esac
 [ -r "$XFCE_PLASMA_XAUTHORITY" ] && ok "Xauthority readable" || warn "Xauthority not readable: $XFCE_PLASMA_XAUTHORITY"
@@ -32,10 +59,9 @@ for command_name in xwinwrap xrandr xprop xfconf-query wmctrl notify-send xdotoo
 if command -v zenity >/dev/null 2>&1; then ok "zenity picker UI"; elif command -v rofi >/dev/null 2>&1; then ok "rofi picker UI"; else warn "neither zenity nor rofi is available"; fi
 check_command picom no
 
-renderer="$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper"
 xfdesktop_bin="$XFCE_PLASMA_XFDESKTOP_DIR/bin/xfdesktop"
 check_elf "renderer" "$renderer"
-check_elf "settings UI" "$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
+check_elf "settings UI" "$settings_ui"
 check_elf "patched xfdesktop" "$xfdesktop_bin"
 [ -x /usr/local/bin/xwinwrap ] && ok "xwinwrap executable" || fail "xwinwrap executable missing at /usr/local/bin/xwinwrap"
 

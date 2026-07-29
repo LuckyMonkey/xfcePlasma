@@ -13,6 +13,10 @@
 #include <errno.h>
 #include <sys/inotify.h>
 
+#ifndef XFCE_PLASMA_VERSION
+#define XFCE_PLASMA_VERSION "unknown"
+#endif
+
 static volatile sig_atomic_t fade_out_requested = 0;
 static volatile sig_atomic_t terminate_requested = 0;
 
@@ -266,8 +270,14 @@ static bool shader_file_changed(int descriptor) {
 
 int main(int argc, char **argv) {
     Window parent = 0;
-    for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "--wid") && i + 1 < argc)
-        parent = strtoul(argv[++i], NULL, 0);
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--version")) {
+            printf("xfce-plasma-renderer %s\n", XFCE_PLASMA_VERSION);
+            return 0;
+        }
+        if (!strcmp(argv[i], "--wid") && i + 1 < argc)
+            parent = strtoul(argv[++i], NULL, 0);
+    }
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
 
     Display *d = XOpenDisplay(NULL);

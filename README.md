@@ -32,7 +32,21 @@ docs/                        operational notes
 
 Runtime integration uses XFCE/X11, `systemd --user`, `xwinwrap`, `xdotool`, `xrandr`, `xfconf-query`, and ImageMagick (`import` and `convert`). Building requires a C11 compiler, raylib development files, GTK 3 development files, `pkg-config`, and `make`.
 
+## Build
+
+From the repo root:
+
+```bash
+make check-deps
+make
+make check
+```
+
+Dependency checks separate build requirements from required, feature-specific, and optional runtime capabilities.
+
 ## Install
+
+Normal installation compiles the visible C sources first and installs the resulting `build/` binaries:
 
 From the repo root:
 
@@ -155,4 +169,4 @@ journalctl --user -u game-mode-guard.service -f
 
 This is designed for X11. Wayland behavior is not expected to match because `xwinwrap`, `ximagesrc`-style assumptions, and root-window compositing differ.
 
-The renderer and unified GTK settings panel are built from `src/` with `make`. The matching known-good runtime artifacts are included for installation; bundled Picom and patched xfdesktop remain binary compatibility components pending their separate reproducibility work.
+The renderer and unified GTK settings panel are built from `src/` with `make`. Normal installation builds and installs those fresh `build/` artifacts. The matching project binaries under `runtime/` are retained only as an explicit fallback or release convenience via `./install.sh --use-bundled-runtime`; bundled Picom and patched xfdesktop remain compatibility components pending their separate reproducibility work.

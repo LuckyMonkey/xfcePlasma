@@ -7,11 +7,21 @@ USER_NAME=$(id -un)
 action=install
 dry_run=false
 no_enable=false
-usage() { printf "usage: %s [--user] [--check] [--dry-run] [--no-enable] [--uninstall]\n" "${0##*/}"; }
-check_dependencies() { local name missing=0; for name in bash cp rsync find systemctl xwinwrap xfconf-query; do if command -v "$name" >/dev/null 2>&1; then printf "ok  %s\n" "$name"; else printf "missing  %s\n" "$name"; missing=1; fi; done; return "$missing"; }
-while [ "$#" -gt 0 ]; do case "$1" in --user) ;; --check) action=check ;; --dry-run) dry_run=true ;; --no-enable) no_enable=true ;; --uninstall) action=uninstall ;; -h|--help) usage; exit 0 ;; *) printf "unknown option: %s\n" "$1" >&2; usage >&2; exit 2 ;; esac; shift; done
+use_bundled_runtime=false
+usage() { printf "usage: %s [--user] [--check] [--dry-run] [--no-enable] [--use-bundled-runtime] [--uninstall]\n" "${0##*/}"; }
+check_dependencies() {
+  if [ "$use_bundled_runtime" = true ]; then make -s -C "$ROOT" check-runtime-deps;
+  else make -s -C "$ROOT" check-deps; fi
+}
+while [ "$#" -gt 0 ]; do case "$1" in --user) ;; --check) action=check ;; --dry-run) dry_run=true ;; --no-enable) no_enable=true ;; --use-bundled-runtime) use_bundled_runtime=true ;; --uninstall) action=uninstall ;; -h|--help) usage; exit 0 ;; *) printf "unknown option: %s\n" "$1" >&2; usage >&2; exit 2 ;; esac; shift; done
 if [ "$action" = check ]; then check_dependencies; exit $?; fi
-if [ "$dry_run" = true ]; then printf "Would install xfcePlasma for %s\n  binaries: %s/.local/bin\n  runtime:  %s/.local/lib/tie-dye-wallpaper\n  config:   %s/.config\n  services: %s/.config/systemd/user\n" "$USER_NAME" "$HOME_DIR" "$HOME_DIR" "$HOME_DIR" "$HOME_DIR"; [ "$no_enable" = false ] || printf "  services will not be enabled\n"; exit 0; fi
+if [ "$dry_run" = true ]; then
+  if [ "$use_bundled_runtime" = true ]; then origin=bundled-runtime; else origin=fresh-build; fi
+  printf "Would install xfcePlasma for %s\n  origin:   %s\n  binaries: %s/.local/bin\n  runtime:  %s/.local/lib/tie-dye-wallpaper\n  config:   %s/.config\n  services: %s/.config/systemd/user\n" "$USER_NAME" "$origin" "$HOME_DIR" "$HOME_DIR" "$HOME_DIR" "$HOME_DIR"
+  [ "$no_enable" = false ] || printf "  services will not be enabled\n"
+  exit 0
+fi
+
 STATE_DIR=${XDG_STATE_HOME:-$HOME_DIR/.local/state}/xfce-plasma
 MANIFEST=$STATE_DIR/install-manifest
 if [ "$action" = uninstall ]; then
@@ -23,6 +33,20 @@ if [ "$action" = uninstall ]; then
   printf "Uninstalled project-owned xfcePlasma files; user configuration and user shaders were preserved.\n"
   exit 0
 fi
+
+if [ "$use_bundled_runtime" = true ]; then
+  renderer_source=$ROOT/runtime/tie-dye-wallpaper/tie-dye-wallpaper
+  settings_ui_source=$ROOT/runtime/xfce-plasma-settings-ui
+  install_origin=bundled-runtime
+else
+  make -C "$ROOT" all
+  renderer_source=$ROOT/build/xfce-plasma-renderer
+  settings_ui_source=$ROOT/build/xfce-plasma-settings-ui
+  install_origin=built-from-source
+fi
+[ -x "$renderer_source" ] || { printf "Renderer artifact is missing: %s\n" "$renderer_source" >&2; exit 1; }
+[ -x "$settings_ui_source" ] || { printf "Settings UI artifact is missing: %s\n" "$settings_ui_source" >&2; exit 1; }
+
 mkdir -p "$STATE_DIR"
 manifest_tmp=$(mktemp "$STATE_DIR/.install-manifest.XXXXXX")
 trap 'rm -f "$manifest_tmp"' EXIT
@@ -64,9 +88,15 @@ cp -a "$ROOT/lib/xfce-plasma-common.sh" "$HOME_DIR/.local/lib/xfce-plasma/xfce-p
 chmod 0644 "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-common.sh"
 record_file "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-common.sh"
 
-cp -a "$ROOT/runtime/xfce-plasma-settings-ui" "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
+cp -a "$settings_ui_source" "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
 chmod 0755 "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
 record_file "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
+
+install_text "$ROOT/VERSION" "$HOME_DIR/.local/lib/xfce-plasma/VERSION"
+xfce_plasma_origin_tmp=$(mktemp)
+printf '%s\n' "$install_origin" > "$xfce_plasma_origin_tmp"
+install_text "$xfce_plasma_origin_tmp" "$HOME_DIR/.local/lib/xfce-plasma/install-origin"
+rm -f -- "$xfce_plasma_origin_tmp"
 
 for script in \
   tie-dye-wallpaper \
@@ -90,7 +120,7 @@ for script in \
   install_bin_text "$ROOT/bin/$script"
 done
 
-cp -a "$ROOT/runtime/tie-dye-wallpaper/tie-dye-wallpaper" "$HOME_DIR/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
+cp -a "$renderer_source" "$HOME_DIR/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
 cp -a "$ROOT/runtime/tie-dye-wallpaper/shader.fs" "$HOME_DIR/.local/lib/tie-dye-wallpaper/shader.fs"
 rsync -a "$ROOT/runtime/tie-dye-wallpaper/shaders/" "$HOME_DIR/.local/lib/tie-dye-wallpaper/shaders/"
 retired_shader_dir="$HOME_DIR/.local/state/xfce-plasma/retired-shaders"

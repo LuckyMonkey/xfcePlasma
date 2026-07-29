@@ -30,6 +30,8 @@ xfce_plasma_init() {
   XFCE_PLASMA_PREFIX=${XFCE_PLASMA_PREFIX:-$HOME/.local}
   XFCE_PLASMA_BIN_DIR=${XFCE_PLASMA_BIN_DIR:-$XFCE_PLASMA_PREFIX/bin}
   XFCE_PLASMA_LIB_DIR=${XFCE_PLASMA_LIB_DIR:-$XFCE_PLASMA_PREFIX/lib/xfce-plasma}
+  XFCE_PLASMA_VERSION_FILE=${XFCE_PLASMA_VERSION_FILE:-$XFCE_PLASMA_LIB_DIR/VERSION}
+  XFCE_PLASMA_INSTALL_ORIGIN_FILE=${XFCE_PLASMA_INSTALL_ORIGIN_FILE:-$XFCE_PLASMA_LIB_DIR/install-origin}
   XFCE_PLASMA_XFDESKTOP_DIR=${XFCE_PLASMA_XFDESKTOP_DIR:-$XFCE_PLASMA_PREFIX/opt/xfdesktop-transparent}
   XFCE_PLASMA_RENDERER_DIR=${XFCE_PLASMA_RENDERER_DIR:-$XFCE_PLASMA_PREFIX/lib/tie-dye-wallpaper}
   XFCE_PLASMA_SHADER_DIR=${XFCE_PLASMA_SHADER_DIR:-$XFCE_PLASMA_DATA_DIR/shaders}
@@ -42,6 +44,32 @@ xfce_plasma_init() {
   XFCE_PLASMA_DISPLAY=${DISPLAY:-}
   XFCE_PLASMA_XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
   XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XFCE_PLASMA_XDG_RUNTIME_DIR/bus}
+}
+
+xfce_plasma_project_version() {
+  local library_dir source_version
+  if [ -r "$XFCE_PLASMA_VERSION_FILE" ]; then
+    sed -n '1p' "$XFCE_PLASMA_VERSION_FILE"
+    return 0
+  fi
+  library_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  for source_version in "$library_dir/VERSION" "$library_dir/../VERSION"; do
+    if [ -r "$source_version" ]; then
+      sed -n '1p' "$source_version"
+      return 0
+    fi
+  done
+  printf 'unknown\n'
+}
+
+xfce_plasma_install_origin() {
+  if [ -r "$XFCE_PLASMA_INSTALL_ORIGIN_FILE" ]; then
+    sed -n '1p' "$XFCE_PLASMA_INSTALL_ORIGIN_FILE"
+  elif [ -x "$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper" ]; then
+    printf 'legacy-or-unknown\n'
+  else
+    printf 'not-installed\n'
+  fi
 }
 
 xfce_plasma_export_session_env() {

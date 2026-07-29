@@ -23,6 +23,16 @@ HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --user --no-ena
 [ -f "$test_home/.local/share/applications/xfce-plasma-settings.desktop" ]
 [ -x "$test_home/.local/bin/restart-animated-wallpaper-renderer" ]
 [ -x "$test_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper" ]
+cmp -s "$repo_root/build/xfce-plasma-renderer" "$test_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
+cmp -s "$repo_root/build/xfce-plasma-settings-ui" "$test_home/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
+expected_version=$(sed -n '1p' "$repo_root/VERSION")
+[ "$("$test_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper" --version)" = "xfce-plasma-renderer $expected_version" ]
+[ "$("$test_home/.local/lib/xfce-plasma/xfce-plasma-settings-ui" --version)" = "xfce-plasma-settings-ui $expected_version" ]
+[ "$(sed -n '1p' "$test_home/.local/lib/xfce-plasma/install-origin")" = built-from-source ]
+version_report=$(HOME="$test_home" XDG_STATE_HOME="$test_home/.local/state" "$test_home/.local/bin/xfce-plasma-settings" version)
+case "$version_report" in *"project version: $expected_version"*"install origin: built-from-source"*) ;; *) printf 'installed version report is incomplete\n%s\n' "$version_report" >&2; exit 1 ;; esac
+doctor_report=$(HOME="$test_home" XDG_STATE_HOME="$test_home/.local/state" PATH="$test_bin:$PATH" "$test_home/.local/bin/xfce-plasma-doctor" --project-root "$repo_root" 2>&1 || true)
+case "$doctor_report" in *"Project version: $expected_version"*"Install origin: built-from-source"*"xfce-plasma-renderer $expected_version"*"xfce-plasma-settings-ui $expected_version"*) ;; *) printf 'doctor version report is incomplete\n%s\n' "$doctor_report" >&2; exit 1 ;; esac
 [ -f "$test_home/.config/systemd/user/tie-dye-wallpaper-mvp.service" ]
 [ -f "$test_home/.config/autostart/tie-dye-wallpaper.desktop" ]
 
@@ -62,4 +72,14 @@ printf "keep\n" > "$outside_marker"
 printf "%s\n" "$test_home/../outside-kept" > "$test_home/.local/state/xfce-plasma/install-manifest"
 if HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/dev/null 2>&1; then printf "unsafe manifest path was accepted\n" >&2; exit 1; fi
 [ -e "$outside_marker" ]
+
+bundled_home="$tmp/Bundled Home"
+mkdir -p "$bundled_home"
+HOME="$bundled_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --user --no-enable --use-bundled-runtime >/dev/null
+cmp -s "$repo_root/runtime/tie-dye-wallpaper/tie-dye-wallpaper" "$bundled_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
+cmp -s "$repo_root/runtime/xfce-plasma-settings-ui" "$bundled_home/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
+[ "$(sed -n '1p' "$bundled_home/.local/lib/xfce-plasma/install-origin")" = bundled-runtime ]
+[ "$("$bundled_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper" --version)" = "xfce-plasma-renderer $expected_version" ]
+[ "$("$bundled_home/.local/lib/xfce-plasma/xfce-plasma-settings-ui" --version)" = "xfce-plasma-settings-ui $expected_version" ]
+HOME="$bundled_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/dev/null
 printf "test-installer-dry-run ok\n"

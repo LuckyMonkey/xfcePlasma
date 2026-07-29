@@ -35,13 +35,24 @@ check_command picom no
 renderer="$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper"
 xfdesktop_bin="$XFCE_PLASMA_XFDESKTOP_DIR/bin/xfdesktop"
 check_elf "renderer" "$renderer"
+check_elf "settings UI" "$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
 check_elf "patched xfdesktop" "$xfdesktop_bin"
 [ -x /usr/local/bin/xwinwrap ] && ok "xwinwrap executable" || fail "xwinwrap executable missing at /usr/local/bin/xwinwrap"
 
 shader_dir="$XFCE_PLASMA_RENDERER_DIR/shaders"
+user_shader_dir="$XFCE_PLASMA_USER_SHADER_DIR"
 selected_file="$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR/current-shader"
-if [ -d "$shader_dir" ]; then shader_count=$(find "$shader_dir" -maxdepth 1 -type f -name "*.fs" | wc -l); [ "$shader_count" -gt 0 ] && ok "$shader_count shader profiles" || fail "shader directory is empty"; else fail "shader directory missing: $shader_dir"; fi
-if [ -s "$selected_file" ]; then selected=$(cat "$selected_file"); if [ -r "$shader_dir/$selected" ]; then ok "selected shader: $selected"; else fail "selected shader is unreadable: $selected"; fi; else warn "selected shader state is missing"; fi
+shader_count=0
+for directory in "$shader_dir" "$user_shader_dir"; do
+  if [ -d "$directory" ]; then count=$(find "$directory" -maxdepth 1 -type f -name "*.fs" | wc -l); shader_count=$((shader_count + count)); fi
+done
+[ "$shader_count" -gt 0 ] && ok "$shader_count shader profiles" || fail "no shader profiles found"
+if [ -s "$selected_file" ]; then
+  selected=$(cat "$selected_file")
+  if [ -r "$shader_dir/$selected" ] || [ -r "$user_shader_dir/$selected" ]; then ok "selected shader: $selected"; else fail "selected shader is unreadable: $selected"; fi
+else
+  warn "selected shader state is missing"
+fi
 
 service_status tie-dye-wallpaper-mvp.service
 service_status xfdesktop-transparent.service

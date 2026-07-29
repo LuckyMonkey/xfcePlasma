@@ -13,60 +13,113 @@ fi
 STATE_DIR=${WALLPAPER_STATE_DIR:-$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR}
 SPEED_FILE=$STATE_DIR/speed
 LABEL_FILE=$STATE_DIR/speed-label
+PREVIOUS_SPEED_FILE=$STATE_DIR/speed-previous
+PREVIOUS_LABEL_FILE=$STATE_DIR/speed-label-previous
 mkdir -p "$STATE_DIR"
 
-labels='frozen slow medium motion-sickness'
+labels=(frozen slow medium fast motion-sickness)
+
 value_for() {
     case "$1" in
         frozen) printf '0.0';;
         slow) printf '0.35';;
         medium) printf '1.0';;
+        fast) printf '1.75';;
         motion-sickness) printf '2.85';;
-        *) printf '1.0';;
+        *) return 1;;
     esac
 }
+
 notify() {
-    command -v notify-send >/dev/null 2>&1 && notify-send "Wallpaper speed" "$1" >/dev/null 2>&1 || true
+    command -v notify-send >/dev/null 2>&1 &&
+        notify-send "Wallpaper speed" "$1" >/dev/null 2>&1 || true
 }
+
 current_label() {
     if [ -s "$LABEL_FILE" ]; then cat "$LABEL_FILE"; else printf 'medium\n'; fi
 }
-set_speed() {
-    label=$1
-    value=$(value_for "$label")
+
+current_value() {
+    if [ -s "$SPEED_FILE" ]; then cat "$SPEED_FILE"; else printf '1.0\n'; fi
+}
+
+valid_numeric() {
+    awk -v value="$1" 'BEGIN {
+        if (value !~ /^([0-9]+([.][0-9]*)?|[.][0-9]+)$/) exit 1
+        number = value + 0
+        exit !(number >= 0 && number <= 4)
+    }'
+}
+
+set_value() {
+    local value=$1 label=${2:-custom}
+    valid_numeric "$value" || {
+        printf 'Speed must be a number from 0 through 4: %s\n' "$value" >&2
+        return 2
+    }
+    [ "$label" != custom ] || value=$(awk -v value="$value" 'BEGIN { printf "%.3g", value + 0 }')
     xfce_plasma_atomic_write "$SPEED_FILE" "$value"
     xfce_plasma_atomic_write "$LABEL_FILE" "$label"
     notify "$label"
     printf '%s\n' "$label"
 }
+
+set_preset() {
+    local label=$1 value
+    value=$(value_for "$label")
+    set_value "$value" "$label"
+}
+
+freeze_speed() {
+    local value label
+    value=$(current_value)
+    label=$(current_label)
+    if awk -v value="$value" 'BEGIN { exit !(value + 0 > 0) }'; then
+        xfce_plasma_atomic_write "$PREVIOUS_SPEED_FILE" "$value"
+        xfce_plasma_atomic_write "$PREVIOUS_LABEL_FILE" "$label"
+    fi
+    set_preset frozen
+}
+
+restore_speed() {
+    local value label
+    if [ -s "$PREVIOUS_SPEED_FILE" ]; then
+        value=$(cat "$PREVIOUS_SPEED_FILE")
+        label=$(cat "$PREVIOUS_LABEL_FILE" 2>/dev/null || printf 'custom')
+        valid_numeric "$value" || { value=1.0; label=medium; }
+        set_value "$value" "$label"
+    else
+        set_preset medium
+    fi
+}
+
 relative() {
-    direction=$1
-    cur=$(current_label)
-    set -- $labels
-    count=$#
-    idx=1; i=1
-    for label in "$@"; do
-        [ "$label" = "$cur" ] && idx=$i
-        i=$((i + 1))
+    local direction=$1 current count index i
+    current=$(current_label)
+    count=${#labels[@]}
+    index=0
+    for i in "${!labels[@]}"; do
+        [ "${labels[$i]}" = "$current" ] && index=$i
     done
     if [ "$direction" = up ]; then
-        idx=$((idx + 1)); [ "$idx" -le "$count" ] || idx=$count
+        index=$((index + 1))
+        [ "$index" -lt "$count" ] || index=$((count - 1))
     else
-        idx=$((idx - 1)); [ "$idx" -ge 1 ] || idx=1
+        index=$((index - 1))
+        [ "$index" -ge 0 ] || index=0
     fi
-    i=1
-    for label in "$@"; do
-        [ "$i" -eq "$idx" ] && { set_speed "$label"; return; }
-        i=$((i + 1))
-    done
+    set_preset "${labels[$index]}"
 }
 
 case "${1:-current}" in
     up|faster|--up) relative up;;
     down|slower|--down) relative down;;
-    frozen|slow|medium|motion-sickness) set_speed "$1";;
+    frozen|slow|medium|fast|motion-sickness) set_preset "$1";;
+    freeze|--freeze) freeze_speed;;
+    restore|--restore) restore_speed;;
+    set|--set) shift; [ "$#" -gt 0 ] || { printf 'set requires a value\n' >&2; exit 2; }; set_value "$1" custom;;
+    get|value|--get|--value) current_value;;
     current|--current) current_label;;
-    value|--value) cat "$SPEED_FILE" 2>/dev/null || printf '1.0\n';;
-    list|--list) printf '%s\n' $labels;;
-    *) current_label;;
+    list|--list) printf '%s\n' "${labels[@]}";;
+    *) printf 'usage: %s [get|set VALUE|up|down|freeze|restore|PRESET|current|list]\n' "${0##*/}" >&2; exit 2;;
 esac

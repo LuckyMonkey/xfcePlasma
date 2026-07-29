@@ -477,6 +477,12 @@ Use a simple key=value config format, not JSON.
 
 PHASE 8A — UNIFIED SETTINGS PANEL
 
+Progress (2026-07-29): replaced the nested Zenity launcher with one persistent
+GTK 3 window backed by the Bash CLI. Wallpaper/user shaders, speed/freeze, game
+mode, Picom, transparent desktop, monitors, recovery, diagnostics, and shortcut
+reference now share one panel. The native UI and shell control paths build and
+test without Python.
+
 Create one central settings command and panel for the complete xfcePlasma stack.
 
 The user must not need to open a collection of separate settings panels. The unified panel must provide a single entry point for:

@@ -10,28 +10,89 @@ fi
 xfce_plasma_export_session_env
 
 run_bin() { "$XFCE_PLASMA_BIN_DIR/$1" "${@:2}"; }
-show_text() { local title=$1; shift; if command -v zenity >/dev/null 2>&1; then "$@" 2>&1 | zenity --text-info --title="$title" --width=760 --height=560; else "$@"; fi; }
-choose_action() { zenity --list --title="xfcePlasma Settings" --text="Animated desktop settings" --column="Section" --column="Current state" --print-column=1 --width=620 --height=520 \
-  "Wallpaper" "$(run_bin animated-wallpaper-picker current)" \
-  "Animation Speed" "$(run_bin animated-wallpaper-speed current)" \
-  "Game Mode" "$(systemctl --user is-active game-mode-guard.service 2>/dev/null || true)" \
-  "Picom Effects" "$(systemctl --user is-active picom-effects.service 2>/dev/null || true)" \
-  "Transparent Desktop" "$(systemctl --user is-active xfdesktop-transparent.service 2>/dev/null || true)" \
-  "Monitor Status" "$(xrandr --query 2>/dev/null | awk '/ connected/{count++} END{print count+0 " connected"}')" \
-  "Diagnostics" "Run complete doctor" \
-  "Recovery" "Restart the desktop stack" \
-  "Quit" "Close settings" 2>/dev/null; }
-choose_speed() { local speed; speed=$(zenity --list --radiolist --title="Animation Speed" --column="" --column="Preset" TRUE "$(run_bin animated-wallpaper-speed current)" FALSE frozen FALSE slow FALSE medium FALSE motion-sickness --print-column=2 2>/dev/null) || return 0; [ -z "$speed" ] || run_bin animated-wallpaper-speed "$speed"; }
-choose_game_mode() { local action; action=$(zenity --list --title="Game Mode" --column="Action" --column="Description" "Enable" "Start and enable the guard" "Disable" "Stop and disable the guard" "Restart" "Restart the guard" 2>/dev/null) || return 0; case "$action" in Enable) systemctl --user enable --now game-mode-guard.service ;; Disable) systemctl --user disable --now game-mode-guard.service ;; Restart) systemctl --user restart game-mode-guard.service ;; esac; }
-choose_picom() { local action; action=$(zenity --list --title="Picom Effects" --column="Action" "Start" "Stop" "Restart" 2>/dev/null) || return 0; case "$action" in Start) systemd-run --user --unit=picom-effects --collect "$XFCE_PLASMA_BIN_DIR/start-picom-effects" >/dev/null ;; Stop) systemctl --user stop picom-effects.service ;; Restart) systemctl --user restart picom-effects.service ;; esac; }
-choose_desktop() { local action; action=$(zenity --list --title="Transparent Desktop" --column="Action" "Start" "Stop" "Restart" 2>/dev/null) || return 0; case "$action" in Start) systemctl --user start xfdesktop-transparent.service ;; Stop) systemctl --user stop xfdesktop-transparent.service ;; Restart) systemctl --user restart xfdesktop-transparent.service ;; esac; }
-run_gui() { command -v zenity >/dev/null 2>&1 || { printf "zenity is required for the graphical settings panel\n" >&2; exit 1; }; local section; while section=$(choose_action); do case "$section" in Wallpaper) run_bin animated-wallpaper-picker pick ;; "Animation Speed") choose_speed ;; "Game Mode") choose_game_mode ;; "Picom Effects") choose_picom ;; "Transparent Desktop") choose_desktop ;; "Monitor Status") show_text "Monitor Status" xrandr --query ;; Diagnostics) show_text "xfcePlasma Doctor" "$XFCE_PLASMA_BIN_DIR/xfce-plasma-doctor" --verbose ;; Recovery) run_bin start-transparent-xfdesktop-session ;; Quit|"") break ;; esac; done; }
+service_status() { systemctl --user is-active "$1" 2>/dev/null || true; }
+
+settings_ui_path() {
+  if [ -n "${XFCE_PLASMA_SETTINGS_UI:-}" ]; then
+    printf '%s\n' "$XFCE_PLASMA_SETTINGS_UI"
+  elif [ -x "$script_dir/../build/xfce-plasma-settings-ui" ]; then
+    printf '%s\n' "$script_dir/../build/xfce-plasma-settings-ui"
+  else
+    printf '%s\n' "$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
+  fi
+}
+
+run_gui() {
+  local ui
+  ui=$(settings_ui_path)
+  [ -x "$ui" ] || {
+    printf 'Native settings UI is missing: %s\nBuild it with: make settings\n' "$ui" >&2
+    exit 1
+  }
+  exec "$ui"
+}
+
+game_control() {
+  case "${1:-status}" in
+    status) service_status game-mode-guard.service;;
+    start|enable) systemctl --user enable --now game-mode-guard.service;;
+    stop|disable) systemctl --user disable --now game-mode-guard.service;;
+    restart) systemctl --user restart game-mode-guard.service;;
+    *) printf 'game expects status, start, stop, or restart\n' >&2; return 2;;
+  esac
+}
+
+picom_start() {
+  if systemctl --user is-active --quiet picom-effects.service; then return 0; fi
+  systemctl --user reset-failed picom-effects.service >/dev/null 2>&1 || true
+  systemd-run --user --unit=picom-effects --collect \
+    "$XFCE_PLASMA_BIN_DIR/start-picom-effects" >/dev/null
+}
+
+picom_control() {
+  case "${1:-status}" in
+    status) service_status picom-effects.service;;
+    start) picom_start;;
+    stop) systemctl --user stop picom-effects.service;;
+    restart) systemctl --user stop picom-effects.service >/dev/null 2>&1 || true; picom_start;;
+    *) printf 'picom expects status, start, stop, or restart\n' >&2; return 2;;
+  esac
+}
+
+desktop_control() {
+  case "${1:-status}" in
+    status) service_status xfdesktop-transparent.service;;
+    start) systemctl --user start xfdesktop-transparent.service;;
+    stop) systemctl --user stop xfdesktop-transparent.service;;
+    restart) systemctl --user restart xfdesktop-transparent.service;;
+    *) printf 'desktop expects status, start, stop, or restart\n' >&2; return 2;;
+  esac
+}
+
+monitor_control() {
+  case "${1:-status}" in
+    status) xrandr --query 2>/dev/null | awk '/ connected/{count++} END{print count+0 " connected"}';;
+    sync) run_bin dual-monitor-wallpaper-sync --once;;
+    *) printf 'monitors expects status or sync\n' >&2; return 2;;
+  esac
+}
+
+forward_or_default() {
+  local command=$1 default=$2
+  shift 2
+  if [ "$#" -eq 0 ]; then set -- "$default"; fi
+  run_bin "$command" "$@"
+}
 
 case "${1:-gui}" in
-  gui|--gui) run_gui ;;
-  status) run_bin xfce-plasma-doctor "${@:2}" ;;
-  wallpaper) shift; run_bin animated-wallpaper-picker "${@:-pick}" ;;
-  speed) shift; run_bin animated-wallpaper-speed "${@:-current}" ;;
-  recover) run_bin start-transparent-xfdesktop-session ;;
-  *) printf "usage: %s [gui|status|wallpaper [ACTION]|speed [ACTION]|recover]\n" "${0##*/}" >&2; exit 2 ;;
+  gui|--gui) run_gui;;
+  status|diagnostics) shift || true; run_bin xfce-plasma-doctor "${@}";;
+  wallpaper) shift; forward_or_default animated-wallpaper-picker pick "$@";;
+  speed) shift; forward_or_default animated-wallpaper-speed current "$@";;
+  game) shift; game_control "${1:-status}";;
+  picom) shift; picom_control "${1:-status}";;
+  desktop) shift; desktop_control "${1:-status}";;
+  monitors) shift; monitor_control "${1:-status}";;
+  recover) run_bin start-transparent-xfdesktop-session;;
+  *) printf 'usage: %s [gui|diagnostics|wallpaper ACTION|speed ACTION|game ACTION|picom ACTION|desktop ACTION|monitors ACTION|recover]\n' "${0##*/}" >&2; exit 2;;
 esac

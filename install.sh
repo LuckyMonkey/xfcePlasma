@@ -64,6 +64,10 @@ cp -a "$ROOT/lib/xfce-plasma-common.sh" "$HOME_DIR/.local/lib/xfce-plasma/xfce-p
 chmod 0644 "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-common.sh"
 record_file "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-common.sh"
 
+cp -a "$ROOT/runtime/xfce-plasma-settings-ui" "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
+chmod 0755 "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
+record_file "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-settings-ui"
+
 for script in \
   tie-dye-wallpaper \
   restart-animated-wallpaper-renderer \

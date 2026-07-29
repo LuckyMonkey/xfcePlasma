@@ -84,6 +84,12 @@ The guard is intentionally generic; it is not tied to Cyberpunk or any one game.
 
 ## Important Commands
 
+Open the single unified settings panel:
+
+```bash
+~/.local/bin/xfce-plasma-settings
+```
+
 Start/restore the full wallpaper plus desktop-icon stack:
 
 ```bash
@@ -140,4 +146,4 @@ journalctl --user -u game-mode-guard.service -f
 
 This is designed for X11. Wayland behavior is not expected to match because `xwinwrap`, `ximagesrc`-style assumptions, and root-window compositing differ.
 
-The included binaries are the known-good local runtime binaries. Rebuilding from source is possible but not captured as the primary path in this repo yet.
+The renderer and unified GTK settings panel are built from `src/` with `make`. The matching known-good runtime artifacts are included for installation; bundled Picom and patched xfdesktop remain binary compatibility components pending their separate reproducibility work.

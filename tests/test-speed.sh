@@ -21,4 +21,21 @@ out=$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wal
 out=$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" value)
 [ "$out" = "0.35" ]
 
+out=$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" fast)
+[ "$out" = "fast" ]
+[ "$(cat "$XDG_STATE_HOME/tie-dye-wallpaper/speed")" = "1.75" ]
+out=$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" freeze)
+[ "$out" = "frozen" ]
+out=$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" restore)
+[ "$out" = "fast" ]
+[ "$(cat "$XDG_STATE_HOME/tie-dye-wallpaper/speed")" = "1.75" ]
+out=$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" set 3.2)
+[ "$out" = "custom" ]
+[ "$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" get)" = "3.2" ]
+if HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" set -1 >/dev/null 2>&1; then
+  printf 'invalid speed unexpectedly accepted\n' >&2
+  exit 1
+fi
+[ "$(HOME="$HOME" XDG_STATE_HOME="$XDG_STATE_HOME" "$repo_root/bin/animated-wallpaper-speed" get)" = "3.2" ]
+
 printf 'test-speed ok\n'

@@ -146,8 +146,6 @@ apply_shader() {
     cp -f "$src" "$ACTIVE_SHADER"
     xfce_plasma_atomic_write "$STATE_FILE" "$name"
     systemctl --user restart "$SERVICE" >"$LOG_FILE" 2>&1 || true
-    sleep 1
-    systemctl --user restart xfdesktop-transparent.service >>"$LOG_FILE" 2>&1 || true
     notify "$(label_for "$name")"
 }
 

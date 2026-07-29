@@ -1,6 +1,5 @@
 SHELL := /bin/bash
 CC ?= cc
-PREFIX ?= $(HOME)/.local
 VERSION := $(strip $(file <VERSION))
 CPPFLAGS += -D_DEFAULT_SOURCE
 CPPFLAGS += -DXFCE_PLASMA_VERSION=\"$(VERSION)\"

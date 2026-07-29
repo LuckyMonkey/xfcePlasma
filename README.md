@@ -65,6 +65,8 @@ systemctl --user restart tie-dye-wallpaper-mvp.service
 
 The installer resolves the current user and XDG paths at runtime. It does not rewrite author-specific paths or overwrite user-created shaders.
 
+Repeated installs are deterministic upgrades: the installer validates the previous project manifest, installs individual files atomically, removes only obsolete project-owned paths, and commits the new manifest last. User configuration, state, and user shaders are not part of that removal set. Use `./install.sh --dry-run` to inspect the planned origin, file count, and stale-file removals without changing the target HOME.
+
 ## Runtime Model
 
 XFWM remains the window manager. XFWM's compositor is disabled and Picom v13 provides compositing/window animation.

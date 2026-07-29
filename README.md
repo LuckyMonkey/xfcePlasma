@@ -205,7 +205,7 @@ Open the unified settings application:
 ~/.local/bin/xfce-plasma-settings
 ```
 
-The Collection view presents responsive static thumbnails, display names,
+The Collection view presents a scrollable thumbnail list with display names,
 categories, descriptions, origin badges, and a clear active state. It keeps
 selection, previous/next, motion speed, pause/resume, preview, and service
 status available without opening an editor.

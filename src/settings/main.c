@@ -13,10 +13,6 @@ typedef struct SettingsApp {
     GtkComboBoxText *wallpaper_combo;
     GtkComboBoxText *speed_combo;
     GtkFlowBox *gallery;
-    GtkWidget *gallery_preview;
-    GtkWidget *gallery_title;
-    GtkWidget *gallery_description;
-    GtkWidget *gallery_meta;
     GtkFileChooser *shader_chooser;
     GtkWidget *wallpaper_state;
     GtkWidget *renderer_state;
@@ -137,23 +133,6 @@ static void set_gallery_image(GtkImage *image, const gchar *path, gint width, gi
     g_clear_error(&error);
 }
 
-static void update_gallery_details(SettingsApp *app, GtkFlowBoxChild *child) {
-    if (!child) return;
-    const gchar *name = g_object_get_data(G_OBJECT(child), "shader-name");
-    const gchar *display = g_object_get_data(G_OBJECT(child), "shader-display");
-    const gchar *category = g_object_get_data(G_OBJECT(child), "shader-category");
-    const gchar *description = g_object_get_data(G_OBJECT(child), "shader-description");
-    const gchar *thumbnail = g_object_get_data(G_OBJECT(child), "shader-thumbnail");
-    const gchar *origin = g_object_get_data(G_OBJECT(child), "shader-origin");
-    gchar *detail = g_strdup_printf("%s  ·  %s  ·  %s", category,
-        g_strcmp0(origin, "local") == 0 ? "Local" : "Bundled", name);
-    gtk_label_set_text(GTK_LABEL(app->gallery_title), display);
-    gtk_label_set_text(GTK_LABEL(app->gallery_description), description);
-    gtk_label_set_text(GTK_LABEL(app->gallery_meta), detail);
-    set_gallery_image(GTK_IMAGE(app->gallery_preview), thumbnail, 320, 180);
-    g_free(detail);
-}
-
 static void clear_gallery(SettingsApp *app) {
     GList *children = gtk_container_get_children(GTK_CONTAINER(app->gallery));
     for (GList *item = children; item; item = item->next) gtk_widget_destroy(GTK_WIDGET(item->data));
@@ -172,22 +151,36 @@ static void refresh_gallery(SettingsApp *app, const gchar *catalog,
         gchar **fields = g_strsplit(lines[index], "\t", 9);
         if (g_strv_length(fields) < 9) { g_strfreev(fields); continue; }
         GtkWidget *child = gtk_flow_box_child_new();
-        GtkWidget *card = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
+        GtkWidget *card = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
         GtkWidget *image = gtk_image_new();
+        GtkWidget *text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
         GtkWidget *title = gtk_label_new(fields[2]);
+        GtkWidget *description = gtk_label_new(fields[4]);
         GtkWidget *secondary = gtk_label_new(NULL);
         gchar *secondary_text = g_strdup_printf("%s  ·  %s", fields[3],
             g_strcmp0(fields[7], "local") == 0 ? "LOCAL" : "BUNDLED");
-        set_gallery_image(GTK_IMAGE(image), fields[6], 220, 124);
+        set_gallery_image(GTK_IMAGE(image), fields[6], 176, 99);
         gtk_label_set_ellipsize(GTK_LABEL(title), PANGO_ELLIPSIZE_END);
+        gtk_label_set_xalign(GTK_LABEL(title), 0.0f);
+        gtk_label_set_xalign(GTK_LABEL(description), 0.0f);
+        gtk_label_set_xalign(GTK_LABEL(secondary), 0.0f);
+        gtk_label_set_line_wrap(GTK_LABEL(description), TRUE);
+        gtk_label_set_max_width_chars(GTK_LABEL(description), 72);
         gtk_label_set_text(GTK_LABEL(secondary), secondary_text);
         gtk_style_context_add_class(gtk_widget_get_style_context(title), "gallery-title");
+        gtk_style_context_add_class(gtk_widget_get_style_context(description), "dim-label");
         gtk_style_context_add_class(gtk_widget_get_style_context(secondary), "dim-label");
         gtk_style_context_add_class(gtk_widget_get_style_context(card), "shader-card");
-        gtk_widget_set_size_request(card, 224, -1);
+        gtk_widget_set_hexpand(child, TRUE);
+        gtk_widget_set_halign(child, GTK_ALIGN_FILL);
+        gtk_widget_set_hexpand(card, TRUE);
+        gtk_widget_set_hexpand(text, TRUE);
+        gtk_widget_set_valign(image, GTK_ALIGN_START);
         gtk_box_pack_start(GTK_BOX(card), image, FALSE, FALSE, 0);
-        gtk_box_pack_start(GTK_BOX(card), title, FALSE, FALSE, 0);
-        gtk_box_pack_start(GTK_BOX(card), secondary, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(text), title, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(text), description, TRUE, TRUE, 0);
+        gtk_box_pack_start(GTK_BOX(text), secondary, FALSE, FALSE, 0);
+        gtk_box_pack_start(GTK_BOX(card), text, TRUE, TRUE, 0);
         gtk_container_add(GTK_CONTAINER(child), card);
         g_object_set_data_full(G_OBJECT(child), "shader-name", g_strdup(fields[0]), g_free);
         g_object_set_data_full(G_OBJECT(child), "shader-display", g_strdup(fields[2]), g_free);
@@ -206,7 +199,6 @@ static void refresh_gallery(SettingsApp *app, const gchar *catalog,
     if (!selected_child) selected_child = first_child;
     if (selected_child) {
         gtk_flow_box_select_child(app->gallery, selected_child);
-        update_gallery_details(app, selected_child);
     }
     app->refreshing_gallery = FALSE;
     gtk_widget_show_all(GTK_WIDGET(app->gallery));
@@ -296,7 +288,6 @@ static void gallery_selection_changed(GtkFlowBox *box, gpointer data) {
         GtkFlowBoxChild *child = GTK_FLOW_BOX_CHILD(selected->data);
         const gchar *name = g_object_get_data(G_OBJECT(child), "shader-name");
         gtk_combo_box_set_active_id(GTK_COMBO_BOX(app->wallpaper_combo), name);
-        update_gallery_details(app, child);
     }
     g_list_free(selected);
 }
@@ -537,8 +528,6 @@ static GtkWidget *collection_page(SettingsApp *app) {
     GtkWidget *previous = new_button("Previous", G_CALLBACK(wallpaper_relative), app);
     GtkWidget *next = new_button("Next", G_CALLBACK(wallpaper_relative), app);
     GtkWidget *gallery_scroll = gtk_scrolled_window_new(NULL, NULL);
-    GtkWidget *details = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
-    GtkWidget *detail_text = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
     gtk_container_set_border_width(GTK_CONTAINER(root), 14);
     gtk_container_set_border_width(GTK_CONTAINER(controls), 0);
     g_object_set_data(G_OBJECT(previous), "action", (gpointer)"prev");
@@ -575,8 +564,8 @@ static GtkWidget *collection_page(SettingsApp *app) {
     gtk_flow_box_set_selection_mode(app->gallery, GTK_SELECTION_SINGLE);
     gtk_flow_box_set_activate_on_single_click(app->gallery, FALSE);
     gtk_flow_box_set_homogeneous(app->gallery, TRUE);
-    gtk_flow_box_set_min_children_per_line(app->gallery, 2);
-    gtk_flow_box_set_max_children_per_line(app->gallery, 4);
+    gtk_flow_box_set_min_children_per_line(app->gallery, 1);
+    gtk_flow_box_set_max_children_per_line(app->gallery, 1);
     gtk_flow_box_set_row_spacing(app->gallery, 8);
     gtk_flow_box_set_column_spacing(app->gallery, 8);
     g_signal_connect(app->gallery, "selected-children-changed", G_CALLBACK(gallery_selection_changed), app);
@@ -585,28 +574,12 @@ static GtkWidget *collection_page(SettingsApp *app) {
     gtk_widget_set_vexpand(gallery_scroll, TRUE);
     gtk_container_add(GTK_CONTAINER(gallery_scroll), GTK_WIDGET(app->gallery));
 
-    app->gallery_preview = gtk_image_new_from_icon_name("image-missing", GTK_ICON_SIZE_DIALOG);
-    app->gallery_title = gtk_label_new("Select a shader");
-    app->gallery_description = gtk_label_new("");
-    app->gallery_meta = gtk_label_new("");
-    gtk_label_set_xalign(GTK_LABEL(app->gallery_title), 0.0f);
-    gtk_label_set_xalign(GTK_LABEL(app->gallery_description), 0.0f);
-    gtk_label_set_xalign(GTK_LABEL(app->gallery_meta), 0.0f);
-    gtk_label_set_line_wrap(GTK_LABEL(app->gallery_description), TRUE);
-    gtk_style_context_add_class(gtk_widget_get_style_context(app->gallery_title), "section-heading");
-    gtk_style_context_add_class(gtk_widget_get_style_context(app->gallery_meta), "dim-label");
-    gtk_box_pack_start(GTK_BOX(detail_text), app->gallery_title, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(detail_text), app->gallery_description, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(detail_text), app->gallery_meta, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(details), app->gallery_preview, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(details), detail_text, TRUE, TRUE, 0);
 
     gtk_box_pack_start(GTK_BOX(root), warning_banner(), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), section_heading("Everyday controls"), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), controls, FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), section_heading("Shader collection"), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), gallery_scroll, TRUE, TRUE, 0);
-    gtk_box_pack_start(GTK_BOX(root), details, FALSE, FALSE, 0);
     return root;
 }
 

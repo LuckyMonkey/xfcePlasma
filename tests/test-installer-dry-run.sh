@@ -17,6 +17,7 @@ case "$dry_output" in *"$test_home/.local/bin"*) ;; *) printf "dry-run omitted t
 
 HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --user --no-enable >/dev/null
 [ -x "$test_home/.local/bin/animated-wallpaper-picker" ]
+[ -x "$test_home/.local/bin/xfce-plasma-doctor" ]
 [ -x "$test_home/.local/bin/restart-animated-wallpaper-renderer" ]
 [ -x "$test_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper" ]
 [ -f "$test_home/.config/systemd/user/tie-dye-wallpaper-mvp.service" ]
@@ -40,6 +41,7 @@ printf "user shader\n" > "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-k
 [ -s "$test_home/.local/state/xfce-plasma/install-manifest" ]
 HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/dev/null
 [ ! -e "$test_home/.local/bin/animated-wallpaper-picker" ]
+[ ! -e "$test_home/.local/bin/xfce-plasma-doctor" ]
 [ ! -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/tie-dye.fs" ]
 [ -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-kept.fs" ]
 [ -e "$test_home/.config/picom/picom.conf" ]

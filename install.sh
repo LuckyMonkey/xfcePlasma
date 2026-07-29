@@ -73,6 +73,7 @@ for script in \
   game-mode-fade \
   animated-wallpaper-picker \
   animated-wallpaper-speed \
+  xfce-plasma-doctor \
   start-animated-wallpaper-with-xfdesktop-icons \
   start-transparent-xfdesktop-session \
   run-custom-xfdesktop \

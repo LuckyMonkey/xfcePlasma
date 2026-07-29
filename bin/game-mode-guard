@@ -79,7 +79,7 @@ game_running() {
 }
 
 fade_stop_wallpaper() {
-    pids=$(pgrep -f '(^|/)tie-dye-wallpaper --wid ' || true)
+    pids=$(pgrep -f '^([^[:space:]]*/)?tie-dye-wallpaper --wid ' || true)
     if [ -n "$pids" ]; then
         log "requesting native wallpaper fade out"
         kill -USR1 $pids 2>/dev/null || true

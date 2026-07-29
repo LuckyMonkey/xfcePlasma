@@ -12,7 +12,7 @@ wait_seconds=${GAME_MODE_FADE_WAIT_SECONDS:-1}
 
 request_native_fade_out() {
   local pids=()
-  mapfile -t pids < <(pgrep -f "^(.*/)?tie-dye-wallpaper --wid " || true)
+  mapfile -t pids < <(pgrep -f "^([^[:space:]]*/)?tie-dye-wallpaper --wid " || true)
   if [ "${#pids[@]}" -gt 0 ]; then
     kill -USR1 "${pids[@]}" 2>/dev/null || true
     sleep "$wait_seconds"

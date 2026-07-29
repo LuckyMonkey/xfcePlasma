@@ -82,6 +82,6 @@ grep -qx 'speed fast' "$settings_log"
 grep -qx 'systemctl --user enable --now game-mode-guard.service' "$settings_log"
 grep -qx 'monitor --once' "$settings_log"
 grep -qx 'recover' "$settings_log"
-[ "$($repo_root/build/xfce-plasma-settings-ui --version)" = "xfce-plasma-settings-ui 1" ]
+[ "$($repo_root/build/xfce-plasma-settings-ui --version)" = "xfce-plasma-settings-ui 2" ]
 
 printf 'test-settings ok\n'

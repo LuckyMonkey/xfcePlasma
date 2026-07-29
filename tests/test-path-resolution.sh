@@ -21,6 +21,8 @@ unset DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS
 [ "$XFCE_PLASMA_XDG_RUNTIME_DIR" = "/run/user/$(id -u)" ]
 [ "$XFCE_PLASMA_XAUTHORITY" = "$HOME/.Xauthority" ]
 [ "$XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS" = "unix:path=/run/user/$(id -u)/bus" ]
+[ "$XFCE_PLASMA_XFDESKTOP_DIR" = "$HOME/.local/opt/xfdesktop-transparent" ]
+[ "$XFCE_PLASMA_RENDERER_DIR" = "$HOME/.local/lib/tie-dye-wallpaper" ]
 [ -z "$XFCE_PLASMA_DISPLAY" ]
 [ "$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR" = "$HOME/.local/state/tie-dye-wallpaper" ]
 

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-set -euo pipefail
-BIN="/home/freezer/.local/opt/xfdesktop-transparent/bin/xfdesktop"
-if pgrep -af "$BIN" >/dev/null 2>&1; then
-  while read -r pid cmd; do
-    case "$cmd" in
-      "$BIN"*) echo "Stopping custom xfdesktop PID $pid"; kill "$pid" ;;
-    esac
-  done < <(pgrep -af "$BIN" || true)
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
 else
-  echo "No custom xfdesktop process found"
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
 fi
+xfce_plasma_export_session_env
+systemctl --user stop xfdesktop-transparent.service
+printf "Custom xfdesktop service stopped\n"

@@ -27,6 +27,8 @@ ORDER=(
     aurora-ribbons.fs
     plasma-lava.fs
     deep-ocean.fs
+    isometric-city.fs
+    trippy-houndstooth.fs
 )
 
 label_for() {

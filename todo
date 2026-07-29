@@ -312,6 +312,11 @@ Do not place the author's current artistic shaders in the public examples direct
 
 PHASE 6 — PRIVATE ARTWORK SEPARATION
 
+Owner decision (2026-07-29): defer this phase until later. Do not split the
+private artwork in the current milestone, and do not build a shader plugin/art-pack
+architecture for the open-source release unless the owner revisits that decision.
+Local GLSL create/import/edit/remove controls remain supported by the unified panel.
+
 The public repository should support an engine/art separation.
 
 Desired conceptual layout:
@@ -477,11 +482,13 @@ Use a simple key=value config format, not JSON.
 
 PHASE 8A — UNIFIED SETTINGS PANEL
 
-Progress (2026-07-29): replaced the nested Zenity launcher with one persistent
-GTK 3 window backed by the Bash CLI. Wallpaper/user shaders, speed/freeze, game
-mode, Picom, transparent desktop, monitors, recovery, diagnostics, and shortcut
-reference now share one panel. The native UI and shell control paths build and
-test without Python.
+Progress (2026-07-29): one native GTK 3 window backed by the Bash CLI now
+controls wallpaper selection, live source editing, shader create/import/remove,
+speed/freeze, epilepsy and motion-sickness guidance, real editable XFCE
+keybindings with conflict protection, game mode, Picom, transparent xfdesktop,
+monitors, recovery, and diagnostics. Tabs were made denser without splitting the
+project into separate panels. The native UI builds with strict warnings and has no
+Python dependency.
 
 Create one central settings command and panel for the complete xfcePlasma stack.
 
@@ -510,6 +517,14 @@ Create one executable, preferably:
 All settings changes must delegate to the same underlying commands and files used by the CLI. Do not duplicate configuration logic inside the UI. The panel must remain optional; every operation must still be possible from the command line.
 
 PHASE 9 — GAME MODE
+
+Progress (2026-07-29): game entry now captures the renderer window, crops one
+dark/desaturated static image per discovered monitor, installs those images as the
+actual XFCE wallpaper, and stops animation only after the static frame is visible.
+Exit fades the raster to black, restores the previous XFCE wallpaper properties,
+and lets the native renderer fade back in. Wallpaper, Picom, and XFWM compositor
+states are recorded and restored exactly. Live two-monitor capture/restore kept the
+xfdesktop and renderer PIDs stable.
 
 Refactor game-mode detection.
 

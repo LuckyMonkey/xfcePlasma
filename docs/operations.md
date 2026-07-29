@@ -10,9 +10,11 @@ This starts Picom effects, restarts the tie-dye wallpaper service, sets XFCE des
 
 ## Game Guard Logs
 
+During a game, `game-mode-raster-wallpaper` keeps a dark, low-saturation capture under the desktop icons. On exit it fades that static image to black before the native renderer returns.
+
 ```bash
-tail -f /tmp/game-mode-guard.log
-cat /tmp/game-mode-desktop-restore.log
+tail -f ~/.local/state/xfce-plasma/logs/game-mode-guard.log
+cat ~/.local/state/xfce-plasma/logs/game-mode-desktop-restore.log
 ```
 
 ## Game Detection

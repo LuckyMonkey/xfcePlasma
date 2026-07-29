@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+STATE_DIR=${GAME_MODE_RASTER_STATE_DIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/xfce-plasma/game-mode-raster}
+FRAME_DIR=$STATE_DIR/frames
+PROPERTY_STATE=$STATE_DIR/wallpaper-properties.tsv
+TRANSPARENT_STATE=$STATE_DIR/transparent-background
+WINDOW_NAME=${WALLPAPER_WINDOW_NAME:-^Tie Dye GPU Wallpaper$}
+FADE_STEPS=${GAME_MODE_FADE_STEPS:-5}
+FADE_DELAY=${GAME_MODE_FADE_DELAY:-0.08}
+
+require_tools() {
+    local tool
+    for tool in xdotool xrandr xfconf-query import convert; do
+        command -v "$tool" >/dev/null 2>&1 || { printf 'Missing required command: %s\n' "$tool" >&2; return 1; }
+    done
+}
+
+wallpaper_properties() {
+    xfconf-query -c xfce4-desktop -lv | awk '$1 ~ /\/last-image$/ { property=$1; $1=""; sub(/^[[:space:]]+/, ""); print property "\t" $0 }'
+}
+
+reload_desktop() {
+    if command -v xfdesktop >/dev/null 2>&1; then xfdesktop --reload >/dev/null 2>&1 || true; fi
+}
+
+set_monitor_image() {
+    local output=$1 image=$2 property value monitor_key
+    monitor_key=monitor${output//-/}
+    while IFS=$'\t' read -r property value; do
+        case "$property" in
+            *"/$monitor_key/"*/last-image) xfconf-query -c xfce4-desktop -p "$property" -s "$image";;
+        esac
+    done < "$PROPERTY_STATE"
+}
+
+capture_frame() {
+    require_tools
+    local window full output geometry width rest height offsets x y image property value
+    window=$(xdotool search --name "$WINDOW_NAME" 2>/dev/null | tail -n 1)
+    [ -n "$window" ] || { printf 'Animated wallpaper window not found\n' >&2; return 1; }
+    mkdir -p "$FRAME_DIR"
+    chmod 700 "$STATE_DIR" "$FRAME_DIR"
+    wallpaper_properties > "$PROPERTY_STATE"
+    xfconf-query -c xfce4-desktop -p /backdrop/transparent-background > "$TRANSPARENT_STATE" 2>/dev/null || printf 'true\n' > "$TRANSPARENT_STATE"
+    full=$FRAME_DIR/full.png
+    import -silent -window "$window" "$full"
+    [ -s "$full" ] || { printf 'Wallpaper capture failed\n' >&2; return 1; }
+
+    while IFS=$'\t' read -r output geometry; do
+        width=${geometry%%x*}; rest=${geometry#*x}; height=${rest%%+*}
+        offsets=${rest#*+}; x=${offsets%%+*}; y=${offsets#*+}
+        image=$FRAME_DIR/${output}.png
+        convert "$full" -crop "${width}x${height}+${x}+${y}" +repage \
+            -modulate 45,28,100 -fill '#210007' -colorize 18 "$image"
+        set_monitor_image "$output" "$image"
+    done < <(xrandr --query | awk '/ connected/ { for (i=3; i<=NF; i++) if ($i ~ /^[0-9]+x[0-9]+\+[0-9]+\+[0-9]+/) { print $1 "\t" $i; break } }')
+
+    xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -s false
+    reload_desktop
+    printf '%s\n' "$FRAME_DIR"
+}
+
+fade_to_black() {
+    [ -s "$PROPERTY_STATE" ] || return 0
+    local step percent source faded output
+    step=1
+    while [ "$step" -le "$FADE_STEPS" ]; do
+        percent=$((step * 100 / FADE_STEPS))
+        for source in "$FRAME_DIR"/*.png; do
+            [ "${source##*/}" != full.png ] || continue
+            output=${source##*/}; output=${output%.png}
+            faded=$FRAME_DIR/${output}-fade.png
+            convert "$source" -fill black -colorize "$percent" "$faded"
+            set_monitor_image "$output" "$faded"
+        done
+        reload_desktop
+        sleep "$FADE_DELAY"
+        step=$((step + 1))
+    done
+}
+
+restore_properties() {
+    [ -s "$PROPERTY_STATE" ] || return 0
+    local property value transparent
+    while IFS=$'\t' read -r property value; do
+        xfconf-query -c xfce4-desktop -p "$property" -s "$value"
+    done < "$PROPERTY_STATE"
+    transparent=$(cat "$TRANSPARENT_STATE" 2>/dev/null || printf 'true')
+    xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -s "$transparent"
+    reload_desktop
+}
+
+clear_state() {
+    [ -d "$STATE_DIR" ] || return 0
+    find "$STATE_DIR" -mindepth 1 -maxdepth 2 -type f -delete
+    rmdir "$FRAME_DIR" "$STATE_DIR" 2>/dev/null || true
+}
+
+case "${1:-status}" in
+    capture) capture_frame;;
+    fade) fade_to_black;;
+    restore) restore_properties; clear_state;;
+    fade-restore) fade_to_black; restore_properties; clear_state;;
+    status) if [ -s "$PROPERTY_STATE" ]; then printf 'captured\n'; else printf 'idle\n'; fi;;
+    clear) clear_state;;
+    *) printf 'usage: %s [capture|fade|restore|fade-restore|status|clear]\n' "${0##*/}" >&2; exit 2;;
+esac

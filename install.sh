@@ -75,6 +75,7 @@ for script in \
   stop-animated-wallpaper \
   dual-monitor-wallpaper-sync \
   game-mode-guard \
+  game-mode-raster-wallpaper \
   game-mode-fade \
   animated-wallpaper-picker \
   animated-wallpaper-speed \
@@ -92,6 +93,13 @@ done
 cp -a "$ROOT/runtime/tie-dye-wallpaper/tie-dye-wallpaper" "$HOME_DIR/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
 cp -a "$ROOT/runtime/tie-dye-wallpaper/shader.fs" "$HOME_DIR/.local/lib/tie-dye-wallpaper/shader.fs"
 rsync -a "$ROOT/runtime/tie-dye-wallpaper/shaders/" "$HOME_DIR/.local/lib/tie-dye-wallpaper/shaders/"
+retired_shader_dir="$HOME_DIR/.local/state/xfce-plasma/retired-shaders"
+for retired_shader in isometric-city.fs trippy-houndstooth.fs; do
+  if [ -f "$HOME_DIR/.local/lib/tie-dye-wallpaper/shaders/$retired_shader" ]; then
+    mkdir -p "$retired_shader_dir"
+    mv -f "$HOME_DIR/.local/lib/tie-dye-wallpaper/shaders/$retired_shader" "$retired_shader_dir/$retired_shader"
+  fi
+done
 chmod 0755 "$HOME_DIR/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
 record_file "$HOME_DIR/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper"
 record_file "$HOME_DIR/.local/lib/tie-dye-wallpaper/shader.fs"

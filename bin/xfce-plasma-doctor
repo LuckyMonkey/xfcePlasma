@@ -28,7 +28,7 @@ case "${XDG_CURRENT_DESKTOP:-}" in *XFCE*|*Xfce*|*xfce*) ok "XFCE session" ;; *)
 case "$XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS" in unix:path=*) [ -S "${XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS#unix:path=}" ] && ok "user DBus socket" || fail "user DBus socket is missing" ;; *) warn "unrecognized DBus address" ;; esac
 if systemctl --user show-environment >/dev/null 2>&1; then ok "systemd user manager"; else fail "systemd user manager unavailable"; fi
 
-for command_name in xwinwrap xrandr xprop xfconf-query wmctrl notify-send; do check_command "$command_name" yes; done
+for command_name in xwinwrap xrandr xprop xfconf-query wmctrl notify-send xdotool import convert; do check_command "$command_name" yes; done
 if command -v zenity >/dev/null 2>&1; then ok "zenity picker UI"; elif command -v rofi >/dev/null 2>&1; then ok "rofi picker UI"; else warn "neither zenity nor rofi is available"; fi
 check_command picom no
 

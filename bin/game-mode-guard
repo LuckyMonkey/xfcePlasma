@@ -1,7 +1,6 @@
-#!/bin/sh
-# General game-mode desktop guard for Steam/Proton/Wine/native launchers.
-# While a game is running, keep XFWM compositing disabled for smoother fullscreen.
-# When the game exits, restore the full animated transparent desktop stack.
+#!/usr/bin/env bash
+# Freeze the animated desktop for configured game processes, then restore exact prior state.
+set -Eeuo pipefail
 
 PATTERNS_FILE=${PATTERNS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/game-mode-guard/patterns}
 LAUNCH_GRACE_SECONDS=${LAUNCH_GRACE_SECONDS:-8}
@@ -13,195 +12,164 @@ LOG=${LOG:-$STATE_ROOT/logs/game-mode-guard.log}
 RESTORE_LOG=${RESTORE_LOG:-$STATE_ROOT/logs/game-mode-desktop-restore.log}
 WALLPAPER_UNIT=${WALLPAPER_UNIT:-tie-dye-wallpaper-mvp.service}
 STACK_RESTART_HELPER=${STACK_RESTART_HELPER:-$HOME/.local/bin/restart-animated-wallpaper-renderer}
+RASTER_HELPER=${RASTER_HELPER:-$HOME/.local/bin/game-mode-raster-wallpaper}
+PICOM_HELPER=${PICOM_HELPER:-$HOME/.local/bin/start-picom-effects}
 WALLPAPER_CHECK_SECONDS=${WALLPAPER_CHECK_SECONDS:-8}
 IDLE_REPAIR_SECONDS=${IDLE_REPAIR_SECONDS:-30}
 FULLSCREEN_MIN_WIDTH=${FULLSCREEN_MIN_WIDTH:-1200}
 FULLSCREEN_MIN_HEIGHT=${FULLSCREEN_MIN_HEIGHT:-700}
 GAME_MODE_STATE_DIR=${GAME_MODE_STATE_DIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/xfce-plasma/game-mode}
 
-log() {
-    printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"
-}
-
-set_game_mode_state() {
-    mkdir -p "$GAME_MODE_STATE_DIR"
-}
+log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >> "$LOG"; }
 
 clear_game_mode_state() {
+    [ -d "$GAME_MODE_STATE_DIR" ] || return 0
+    find "$GAME_MODE_STATE_DIR" -mindepth 1 -maxdepth 1 -type f -delete
     rmdir "$GAME_MODE_STATE_DIR" 2>/dev/null || true
 }
 
 process_game_running() {
-    if [ ! -r "$PATTERNS_FILE" ]; then
-        return 1
-    fi
-
+    [ -r "$PATTERNS_FILE" ] || return 1
     while IFS= read -r pattern; do
-        case "$pattern" in
-            ''|'#'*) continue ;;
-        esac
-        if pgrep -af "$pattern" >/dev/null 2>&1; then
-            log "game process matched: $pattern"
-            return 0
-        fi
+        case "$pattern" in ''|'#'*) continue;; esac
+        if pgrep -af "$pattern" >/dev/null 2>&1; then log "game process matched: $pattern"; return 0; fi
     done < "$PATTERNS_FILE"
-
     return 1
 }
 
 fullscreen_window_present() {
     command -v xdotool >/dev/null 2>&1 || return 1
     command -v xprop >/dev/null 2>&1 || return 1
-
+    local wid state class geometry key value width height
     for wid in $(xdotool search --onlyvisible --name '.*' 2>/dev/null); do
         state=$(xprop -id "$wid" _NET_WM_STATE 2>/dev/null || true)
-        case "$state" in
-            *_NET_WM_STATE_FULLSCREEN*) ;;
-            *) continue ;;
-        esac
-
+        case "$state" in *_NET_WM_STATE_FULLSCREEN*) ;; *) continue;; esac
         class=$(xprop -id "$wid" WM_CLASS 2>/dev/null || true)
-        case "$class" in
-            *xfce4-panel*|*Xfdesktop*|*xfdesktop*|*wrapper-2.0*|*Xfce-edge-center*|*Whisker*) continue ;;
-        esac
-
-        eval "$(xdotool getwindowgeometry --shell "$wid" 2>/dev/null || true)"
-        if [ "${WIDTH:-0}" -ge "$FULLSCREEN_MIN_WIDTH" ] && [ "${HEIGHT:-0}" -ge "$FULLSCREEN_MIN_HEIGHT" ]; then
-            log "fullscreen window matched: wid=$wid ${WIDTH}x${HEIGHT} $class"
-            return 0
+        case "$class" in *xfce4-panel*|*Xfdesktop*|*xfdesktop*|*wrapper-2.0*|*Xfce-edge-center*|*Whisker*) continue;; esac
+        width=0; height=0
+        geometry=$(xdotool getwindowgeometry --shell "$wid" 2>/dev/null || true)
+        while IFS='=' read -r key value; do
+            case "$key" in WIDTH) width=$value;; HEIGHT) height=$value;; esac
+        done <<< "$geometry"
+        if [ "$width" -ge "$FULLSCREEN_MIN_WIDTH" ] && [ "$height" -ge "$FULLSCREEN_MIN_HEIGHT" ]; then
+            log "fullscreen window matched: wid=$wid ${width}x${height} $class"; return 0
         fi
     done
-
     return 1
 }
 
-game_running() {
-    process_game_running || fullscreen_window_present
-}
-
-fade_stop_wallpaper() {
-    pids=$(pgrep -f '^([^[:space:]]*/)?tie-dye-wallpaper --wid ' || true)
-    if [ -n "$pids" ]; then
-        log "requesting native wallpaper fade out"
-        kill -USR1 $pids 2>/dev/null || true
-        waited=0
-        while [ "$waited" -lt 3 ]; do
-            if ! wallpaper_running; then
-                return 0
-            fi
-            sleep 1
-            waited=$((waited + 1))
-        done
-    fi
-    systemctl --user stop "$WALLPAPER_UNIT" >/dev/null 2>&1 || true
-}
-
-fade_in_after_game() {
-    # Fade-in is native: the renderer starts from black and raises its shader fade value.
-    return 0
-}
+game_running() { process_game_running; }
 
 wallpaper_running() {
     systemctl --user is-active --quiet "$WALLPAPER_UNIT" &&
         pgrep -af '[/]usr/local/bin/xwinwrap .*tie-dye-wallpaper' >/dev/null 2>&1
 }
 
-ensure_wallpaper() {
-    reason=$1
-    log "ensuring animated wallpaper ($reason)"
-    if wallpaper_running; then
-        log "animated wallpaper already running"
-        return 0
+record_desktop_state() {
+    mkdir -p "$GAME_MODE_STATE_DIR"
+    if wallpaper_running; then touch "$GAME_MODE_STATE_DIR/wallpaper.was-active"; fi
+    if systemctl --user is-active --quiet picom-effects.service; then touch "$GAME_MODE_STATE_DIR/picom.was-active"; fi
+    xfconf-query -c xfwm4 -p /general/use_compositing > "$GAME_MODE_STATE_DIR/xfwm-compositing" 2>/dev/null || printf 'false\n' > "$GAME_MODE_STATE_DIR/xfwm-compositing"
+}
+
+native_fade_stop_wallpaper() {
+    local pids waited
+    pids=$(pgrep -f '^([^[:space:]]*/)?tie-dye-wallpaper --wid ' || true)
+    if [ -n "$pids" ]; then
+        log "frozen-frame capture unavailable; requesting native fade out"
+        kill -USR1 $pids 2>/dev/null || true
+        waited=0
+        while [ "$waited" -lt 3 ]; do
+            wallpaper_running || return 0
+            sleep 1; waited=$((waited + 1))
+        done
     fi
-    if [ -x "$STACK_RESTART_HELPER" ]; then
-        "$STACK_RESTART_HELPER" >>"$RESTORE_LOG" 2>&1 || true
+    systemctl --user stop "$WALLPAPER_UNIT" >/dev/null 2>&1 || true
+}
+
+freeze_and_stop_wallpaper() {
+    if [ -x "$RASTER_HELPER" ] && "$RASTER_HELPER" capture >> "$RESTORE_LOG" 2>&1; then
+        log "installed dark desaturated wallpaper freeze frame"
+        systemctl --user stop "$WALLPAPER_UNIT" >/dev/null 2>&1 || true
     else
-        systemctl --user stop xfdesktop-transparent.service >>"$RESTORE_LOG" 2>&1 || true
-        systemctl --user reset-failed "$WALLPAPER_UNIT" >>"$RESTORE_LOG" 2>&1 || true
-        systemctl --user restart "$WALLPAPER_UNIT" >>"$RESTORE_LOG" 2>&1 || true
-        sleep 1
-        systemctl --user start xfdesktop-transparent.service >>"$RESTORE_LOG" 2>&1 || true
+        native_fade_stop_wallpaper
     fi
+}
 
-    waited=0
+start_picom() {
+    systemctl --user reset-failed picom-effects.service >/dev/null 2>&1 || true
+    systemd-run --user --unit=picom-effects --collect "$PICOM_HELPER" >/dev/null 2>&1 || true
+}
+
+wait_for_wallpaper() {
+    local waited=0
     while [ "$waited" -lt "$WALLPAPER_CHECK_SECONDS" ]; do
-        if wallpaper_running; then
-            log "animated wallpaper running"
-            return 0
-        fi
-        sleep 1
-        waited=$((waited + 1))
+        if wallpaper_running; then log "animated wallpaper running"; return 0; fi
+        sleep 1; waited=$((waited + 1))
     done
-
     log "animated wallpaper still missing after ${WALLPAPER_CHECK_SECONDS}s"
     return 1
 }
 
+ensure_wallpaper() {
+    local reason=$1
+    log "ensuring animated wallpaper ($reason)"
+    wallpaper_running && return 0
+    if [ -x "$STACK_RESTART_HELPER" ]; then "$STACK_RESTART_HELPER" >> "$RESTORE_LOG" 2>&1 || true
+    else systemctl --user reset-failed "$WALLPAPER_UNIT" >/dev/null 2>&1 || true; systemctl --user restart "$WALLPAPER_UNIT" >> "$RESTORE_LOG" 2>&1 || true
+    fi
+    wait_for_wallpaper
+}
+
 enter_game_mode() {
-    if fullscreen_window_present; then
-        log "fullscreen detected; entering game mode immediately"
+    if fullscreen_window_present; then log "fullscreen detected; entering game mode immediately"
     else
         log "game process detected; waiting ${LAUNCH_GRACE_SECONDS}s before disabling compositor"
         sleep "$LAUNCH_GRACE_SECONDS"
-        if ! game_running; then
-            log "game exited during launch grace; leaving desktop unchanged"
-            return 1
-        fi
+        if ! game_running; then log "game exited during launch grace; leaving desktop unchanged"; return 1; fi
     fi
-
-    set_game_mode_state
-    fade_stop_wallpaper
-    systemctl --user stop picom-effects.service >/dev/null 2>&1 || true
-    sleep 1
+    record_desktop_state
+    freeze_and_stop_wallpaper
+    if [ -e "$GAME_MODE_STATE_DIR/picom.was-active" ]; then systemctl --user stop picom-effects.service >/dev/null 2>&1 || true; fi
     xfconf-query -c xfwm4 -p /general/use_compositing -s false >/dev/null 2>&1 || true
     log "game mode active"
-    return 0
 }
 
 restore_desktop() {
+    local wallpaper_was_active=false
+    [ -e "$GAME_MODE_STATE_DIR/wallpaper.was-active" ] && wallpaper_was_active=true
     log "game exited; waiting ${EXIT_GRACE_SECONDS}s before restore"
     sleep "$EXIT_GRACE_SECONDS"
-    if game_running; then
-        log "another game process appeared during exit grace; staying in game mode"
-        return 1
-    fi
+    if game_running; then log "another game process appeared during exit grace; staying in game mode"; return 1; fi
 
-    clear_game_mode_state
-    "$HOME/.local/bin/start-transparent-xfdesktop-session" >"$RESTORE_LOG" 2>&1
-    status=$?
-    if [ "$status" -eq 0 ] && ensure_wallpaper "post-game restore"; then
-        fade_in_after_game
-        log "desktop restored"
-    else
-        log "desktop restore failed with status $status; see $RESTORE_LOG"
-        ensure_wallpaper "restore fallback" || true
+    if [ -x "$RASTER_HELPER" ]; then "$RASTER_HELPER" fade >> "$RESTORE_LOG" 2>&1 || true; "$RASTER_HELPER" restore >> "$RESTORE_LOG" 2>&1 || true; fi
+    if [ "$wallpaper_was_active" = true ]; then
+        systemctl --user reset-failed "$WALLPAPER_UNIT" >/dev/null 2>&1 || true
+        systemctl --user start "$WALLPAPER_UNIT" >> "$RESTORE_LOG" 2>&1 || true
     fi
-    wallpaper_running
+    if [ -e "$GAME_MODE_STATE_DIR/picom.was-active" ]; then start_picom; fi
+    if [ -s "$GAME_MODE_STATE_DIR/xfwm-compositing" ]; then
+        xfconf-query -c xfwm4 -p /general/use_compositing -s "$(cat "$GAME_MODE_STATE_DIR/xfwm-compositing")" >/dev/null 2>&1 || true
+    fi
+    clear_game_mode_state
+    if [ "$wallpaper_was_active" = false ]; then log "desktop state restored"; return 0; fi
+    if wait_for_wallpaper; then log "desktop restored"; return 0; fi
+    ensure_wallpaper "restore fallback"
 }
 
 in_game_mode=false
 last_idle_repair=0
 clear_game_mode_state
-trap clear_game_mode_state EXIT
 trap 'clear_game_mode_state; exit 0' HUP INT TERM
 log "game-mode guard started"
 while :; do
     if game_running; then
-        if [ "$in_game_mode" = false ]; then
-            if enter_game_mode; then
-                in_game_mode=true
-            fi
-        fi
+        if [ "$in_game_mode" = false ] && enter_game_mode; then in_game_mode=true; fi
     elif [ "$in_game_mode" = true ]; then
-        if restore_desktop; then
-            in_game_mode=false
-        fi
+        if restore_desktop; then in_game_mode=false; fi
     elif ! wallpaper_running; then
         now=$(date +%s)
-        if [ $((now - last_idle_repair)) -ge "$IDLE_REPAIR_SECONDS" ]; then
-            last_idle_repair=$now
-            ensure_wallpaper "idle repair" || true
-        fi
+        if [ $((now - last_idle_repair)) -ge "$IDLE_REPAIR_SECONDS" ]; then last_idle_repair=$now; ensure_wallpaper "idle repair" || true; fi
     fi
     sleep "$POLL_SECONDS"
 done

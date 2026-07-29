@@ -1,21 +1,22 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 HOME_DIR=${HOME:?HOME is required}
 USER_NAME=$(id -un)
-USER_ID=$(id -u)
+action=install
+dry_run=false
+no_enable=false
+usage() { printf "usage: %s [--user] [--check] [--dry-run] [--no-enable]\n" "${0##*/}"; }
+check_dependencies() { local name missing=0; for name in bash cp rsync find systemctl xwinwrap xfconf-query; do if command -v "$name" >/dev/null 2>&1; then printf "ok  %s\n" "$name"; else printf "missing  %s\n" "$name"; missing=1; fi; done; return "$missing"; }
+while [ "$#" -gt 0 ]; do case "$1" in --user) ;; --check) action=check ;; --dry-run) dry_run=true ;; --no-enable) no_enable=true ;; -h|--help) usage; exit 0 ;; *) printf "unknown option: %s\n" "$1" >&2; usage >&2; exit 2 ;; esac; shift; done
+if [ "$action" = check ]; then check_dependencies; exit $?; fi
+if [ "$dry_run" = true ]; then printf "Would install xfcePlasma for %s\n  binaries: %s/.local/bin\n  runtime:  %s/.local/lib/tie-dye-wallpaper\n  config:   %s/.config\n  services: %s/.config/systemd/user\n" "$USER_NAME" "$HOME_DIR" "$HOME_DIR" "$HOME_DIR" "$HOME_DIR"; [ "$no_enable" = false ] || printf "  services will not be enabled\n"; exit 0; fi
 
 install_text() {
   src=$1
   dest=$2
-  mkdir -p "$(dirname "$dest")"
-  sed \
-    -e "s#/home/freezer#$HOME_DIR#g" \
-    -e "s#USER=freezer#USER=$USER_NAME#g" \
-    -e "s#LOGNAME=freezer#LOGNAME=$USER_NAME#g" \
-    -e "s#/run/user/1000#/run/user/$USER_ID#g" \
-    "$src" > "$dest"
+  cp -a "$src" "$dest"
   chmod --reference="$src" "$dest" 2>/dev/null || chmod 0644 "$dest"
 }
 
@@ -41,6 +42,7 @@ chmod 0644 "$HOME_DIR/.local/lib/xfce-plasma/xfce-plasma-common.sh"
 
 for script in \
   tie-dye-wallpaper \
+  restart-animated-wallpaper-renderer \
   start-picom-effects \
   stop-animated-wallpaper \
   dual-monitor-wallpaper-sync \

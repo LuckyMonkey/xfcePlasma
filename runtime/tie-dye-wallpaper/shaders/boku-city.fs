@@ -46,45 +46,45 @@ float bridge(vec2 p){
 void main(){
     vec2 p=(gl_FragCoord.xy-0.5*resolution)/resolution.y;
     float y=p.y+0.5;
-    vec3 col=mix(vec3(0.20,0.035,0.31),vec3(0.018,0.008,0.065),smoothstep(0.0,1.0,y));
+    vec3 col=mix(vec3(0.38,0.035,0.12),vec3(0.035,0.008,0.055),smoothstep(0.0,1.0,y));
 
     vec2 moonCenter=vec2(0.42,0.25);
     float moon=1.0-smoothstep(0.105,0.116,length(p-moonCenter));
     float moonCut=1.0-smoothstep(0.090,0.103,length(p-(moonCenter+vec2(0.045,0.025))));
     moon*=1.0-moonCut;
-    col=mix(col,vec3(0.89,0.66,0.94),moon*0.82);
+    col=mix(col,vec3(1.00,0.48,0.18),moon*0.82);
 
     vec2 starCell=floor((p+vec2(2.0,0.7))*vec2(48.0,31.0));
     vec2 starPoint=(fract((p+vec2(2.0,0.7))*vec2(48.0,31.0))-0.5);
     float star=(1.0-smoothstep(0.035,0.075,length(starPoint)))*step(0.92,hash(starCell));
-    col+=star*vec3(0.72,0.55,0.92)*(0.55+0.45*sin(time+hash(starCell)*6.2831));
+    col+=star*vec3(1.00,0.48,0.62)*(0.55+0.45*sin(time+hash(starCell)*6.2831));
 
     float farRidge=-0.13+0.22*fbm(vec2((p.x+time*0.0015)*0.75,4.0));
     float farMask=smoothstep(0.008,-0.008,p.y-farRidge);
-    col=mix(col,vec3(0.095,0.025,0.17),farMask);
+    col=mix(col,vec3(0.16,0.025,0.08),farMask);
     float nearRidge=-0.24+0.18*fbm(vec2((p.x+time*0.003)*1.25,12.0));
     float nearMask=smoothstep(0.008,-0.008,p.y-nearRidge);
-    col=mix(col,vec3(0.055,0.016,0.105),nearMask);
+    col=mix(col,vec3(0.075,0.012,0.04),nearMask);
 
     vec2 farCity=buildingLayer(p,-0.36,0.105,0.30,0.007,11.0);
-    col=mix(col,vec3(0.12,0.035,0.20),farCity.x);
-    col+=farCity.y*vec3(0.72,0.32,0.85)*0.38;
+    col=mix(col,vec3(0.27,0.035,0.12),farCity.x);
+    col+=farCity.y*vec3(1.00,0.36,0.20)*0.38;
     vec2 midCity=buildingLayer(p,-0.46,0.145,0.43,0.014,37.0);
-    col=mix(col,vec3(0.060,0.016,0.12),midCity.x);
-    col+=midCity.y*vec3(0.96,0.44,0.70)*0.58;
+    col=mix(col,vec3(0.13,0.018,0.08),midCity.x);
+    col+=midCity.y*vec3(1.00,0.52,0.18)*0.58;
     vec2 nearCity=buildingLayer(p,-0.56,0.205,0.58,0.024,83.0);
-    col=mix(col,vec3(0.018,0.008,0.052),nearCity.x);
-    col+=nearCity.y*vec3(0.94,0.58,0.35)*0.72;
+    col=mix(col,vec3(0.035,0.006,0.025),nearCity.x);
+    col+=nearCity.y*vec3(1.00,0.34,0.12)*0.72;
 
     float bridgeMask=bridge(p);
-    col=mix(col,vec3(0.025,0.008,0.065),bridgeMask);
+    col=mix(col,vec3(0.040,0.006,0.025),bridgeMask);
     float water=step(p.y,-0.375);
     float reflection=(0.5+0.5*sin(p.x*42.0+time*0.22))*exp(-8.0*abs(p.y+0.44));
-    col=mix(col,col*0.40+vec3(0.055,0.012,0.11),water*0.76);
-    col+=water*reflection*vec3(0.24,0.055,0.31);
+    col=mix(col,col*0.40+vec3(0.080,0.008,0.035),water*0.76);
+    col+=water*reflection*vec3(0.34,0.030,0.080);
 
     float haze=exp(-28.0*abs(p.y+0.24))*0.18;
-    col=mix(col,vec3(0.28,0.07,0.34),haze);
+    col=mix(col,vec3(0.58,0.12,0.10),haze);
     col*=0.72+0.32*smoothstep(1.5,0.25,length(p));
     float f=clamp(fade,0.,1.);
     col=mix(vec3(fadeTarget),col,f);

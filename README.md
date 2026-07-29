@@ -84,7 +84,7 @@ The guard is intentionally generic; it is not tied to Cyberpunk or any one game.
 
 ## Important Commands
 
-The panel includes all wallpaper profiles (including Ricky, Red Forest, and Roku City), a live GLSL source editor with create/import/remove controls, speed and safety controls, services, diagnostics, and editable XFCE shortcuts.
+The panel includes all wallpaper profiles (including Ricky, Red Forest, and Boku City), a live GLSL source editor with create/import/remove controls, speed and safety controls, services, diagnostics, and editable XFCE shortcuts.
 
 Open the single unified settings panel:
 

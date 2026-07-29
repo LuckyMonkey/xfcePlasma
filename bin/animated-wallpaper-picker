@@ -27,7 +27,7 @@ ORDER=(
     plasma-lava.fs
     deep-ocean.fs
     red-forest.fs
-    roku-city.fs
+    boku-city.fs
     ricky.fs
 )
 
@@ -40,7 +40,7 @@ label_for() {
         plasma-lava.fs) printf 'Plasma Lava';;
         deep-ocean.fs) printf 'Deep Ocean';;
         red-forest.fs) printf 'Red Forest';;
-        roku-city.fs) printf 'Roku City';;
+        boku-city.fs) printf 'Boku City';;
         ricky.fs) printf 'Ricky';;
         *) basename "$1" .fs | sed 's/-/ /g; s/\b\(.\)/\u\1/g';;
     esac

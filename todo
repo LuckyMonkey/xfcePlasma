@@ -73,6 +73,7 @@ PRIMARY GOALS
 8. Improve game-mode detection and restoration.
 9. Preserve the lightweight architecture.
 10. Document exactly what is open source, what is separately distributed artwork, and what remains precompiled.
+11. Provide one unified central settings panel for the complete desktop stack.
 
 PHASE 1 — AUDIT
 
@@ -467,6 +468,34 @@ Do not rely on restarting the renderer merely to change speed.
 The renderer should watch the state file with inotify or accept a signal/IPC command.
 
 Use a simple key=value config format, not JSON.
+
+PHASE 8A — UNIFIED SETTINGS PANEL
+
+Create one central settings command and panel for the complete xfcePlasma stack.
+
+The user must not need to open a collection of separate settings panels. The unified panel must provide a single entry point for:
+
+- wallpaper selection and user shader management
+- animation speed, freeze, and restore
+- game-mode settings and current state
+- Picom effects and compositor state
+- transparent xfdesktop state
+- monitor synchronization
+- service status and recovery actions
+- diagnostics and dependency status
+- project-specific keyboard shortcuts
+
+Preferred implementation:
+
+- Bash for invoking existing control commands, reading simple key=value settings, and an initial short-lived Zenity or rofi interface
+- C with GTK/X11 only if a responsive persistent unified window cannot be kept reliable and understandable in shell
+- no Python, web UI, Electron, Node.js, or multiple independent project settings applications
+
+Create one executable, preferably:
+
+    xfce-plasma-settings
+
+All settings changes must delegate to the same underlying commands and files used by the CLI. Do not duplicate configuration logic inside the UI. The panel must remain optional; every operation must still be possible from the command line.
 
 PHASE 9 — GAME MODE
 
@@ -971,6 +1000,7 @@ The work is complete only when:
 18. xfce-plasma-doctor identifies missing dependencies clearly.
 19. README accurately distinguishes source-built and binary-only components.
 20. The repository remains lean and understandable.
+21. One unified settings panel controls the project; no collection of separate project panels is required.
 
 IMPLEMENTATION ORDER
 
@@ -984,6 +1014,7 @@ Follow this order:
 6. Replace Python.
 7. Improve installer and service templates.
 8. Add diagnostics.
+8a. Add the single unified settings panel after its underlying control commands are stable.
 9. Add renderer source/build support.
 10. Add live shader reload.
 11. Separate private artwork.

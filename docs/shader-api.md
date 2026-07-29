@@ -55,6 +55,15 @@ animated-wallpaper-picker user-add "/path/to/My Shader.fs"
 animated-wallpaper-picker set "My Shader.fs"
 ```
 
+The same operations are available in the unified settings panel. CLI source management is also available:
+
+```bash
+animated-wallpaper-picker create "My Copy.fs" tie-dye.fs
+animated-wallpaper-picker read "My Copy.fs"
+animated-wallpaper-picker replace "My Copy.fs" /tmp/edited.fs
+animated-wallpaper-picker remove "My Copy.fs"
+```
+
 User shaders are stored under
 `${XDG_DATA_HOME:-$HOME/.local/share}/xfce-plasma/user-shaders`. Names may
 contain spaces. A user shader cannot replace a built-in shader with the same

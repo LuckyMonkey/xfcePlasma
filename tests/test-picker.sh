@@ -64,6 +64,14 @@ added=$("$repo_root/bin/animated-wallpaper-picker" user-add "$tmp/user shader.fs
 "$repo_root/bin/animated-wallpaper-picker" set "user shader.fs"
 [ "$(cat "$runtime/shader.fs")" = "shader imported" ]
 [ "$("$repo_root/bin/animated-wallpaper-picker" current)" = "user shader.fs" ]
+"$repo_root/bin/animated-wallpaper-picker" create "copy shader.fs" tie-dye.fs
+[ "$("$repo_root/bin/animated-wallpaper-picker" read "copy shader.fs")" = "shader one" ]
+printf 'edited shader\n' > "$tmp/edited.fs"
+"$repo_root/bin/animated-wallpaper-picker" replace "copy shader.fs" "$tmp/edited.fs"
+[ "$("$repo_root/bin/animated-wallpaper-picker" read "copy shader.fs")" = "edited shader" ]
+"$repo_root/bin/animated-wallpaper-picker" remove "copy shader.fs"
+! "$repo_root/bin/animated-wallpaper-picker" source "copy shader.fs" 2>/dev/null
+
 [ ! -e "$SYSTEMCTL_LOG" ]
 before=$(cat "$runtime/shader.fs")
 if "$repo_root/bin/animated-wallpaper-picker" set "missing shader.fs"; then

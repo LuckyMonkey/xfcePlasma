@@ -1,60 +1,167 @@
 # xfcePlasma
 
-Animated XFCE desktop stack for an Xubuntu/XFCE session on X11.
+xfcePlasma is a shader-driven animated desktop system for XFCE on X11.
 
-This repo packages a portable animated background stack:
+It combines a native raylib renderer, a GTK 3 settings application, Bash
+controllers, systemd user services, xwinwrap, Picom, and a patched transparent
+xfdesktop. XFWM remains the window manager and XFCE desktop icons remain
+interactive above the animation.
 
-- transparent custom `xfdesktop` runtime so desktop icons remain visible over animation
-- GPU tie-dye wallpaper renderer running under `xwinwrap`
-- Picom v13 compositor with window animations while XFWM remains the window manager
-- dual-monitor wallpaper sync helper
-- game-aware guard that freezes a dark, desaturated XFCE wallpaper while games run and restores only the components it stopped
-- raster fade-to-black handoff for smooth return to the animated renderer
+This is not KDE Plasma, does not require KDE, and does not claim Wayland
+support. It has no Python, Electron, web server, or root-install requirement.
 
-This is **not PipCast**. PipCast lives elsewhere and is intentionally excluded.
+## Supported environment
 
-## Layout
+The current reference platform is Ubuntu 24.04.4 LTS with Xfce 4.18.3, an X11
+session, GTK 3.24, raylib 6.0, and Picom v13. The build and non-graphical test
+suite also run without changing the active desktop.
+
+Other XFCE/X11 distributions may work when they provide compatible GTK 3,
+raylib, X11, xfconf, systemd-user, and xwinwrap components. The patched
+xfdesktop artifact is based on Ubuntu `xfdesktop4` `4.18.1-1build3`; rebuild it
+for a different target and user prefix.
+
+## Architecture
 
 ```text
-bin/                         helper scripts installed to ~/.local/bin
-runtime/tie-dye-wallpaper/   animated wallpaper binary, active shader, and shader presets
-runtime/xfdesktop-transparent/ custom transparent xfdesktop runtime
-runtime/picom-v13            Picom v13 binary currently in use
-config/picom/picom.conf      compositor/animation config
-config/game-mode-guard/      process patterns for game detection
-config/xfce4/                XFCE keyboard shortcut backup
-autostart/                   XFCE autostart desktop entries
-systemd/user/                user services
-docs/                        operational notes
+GTK settings UI
+        |
+        v
+Bash controller scripts
+        |
+        v
+XDG state, configuration, shader, and metadata files
+        |
+        v
+systemd user services
+        |
+        v
+xwinwrap + raylib renderer
+        |
+        v
+Picom + transparent xfdesktop
 ```
+
+Picom supplies X11 compositing and window effects while XFWM remains the window
+manager. xwinwrap owns the desktop-sized renderer window. The patched
+xfdesktop supplies a transparent, interactive desktop icon layer. Game mode
+hands off to a dark, desaturated static XFCE wallpaper before stopping the
+animated components, then fades the raster to black as animation returns.
+
+## Repository layout
+
+```text
+src/renderer/                 raylib/X11 renderer source
+src/settings/                 GTK 3 settings source
+bin/                          Bash controllers and focused helpers
+lib/                          shared Bash path/state functions
+runtime/tie-dye-wallpaper/    release fallback, active seed, bundled shaders
+runtime/xfdesktop-transparent/ reference patched xfdesktop runtime
+runtime/picom-v13             pinned compositor compatibility artifact
+assets/thumbnails/            static shader gallery images
+systemd/user/                 user service units
+scripts/                      explicit third-party rebuild scripts
+patches/                      recovered third-party source patch
+tests/                        shell integration and boundary tests
+docs/                         operations, authoring, audit, and provenance
+```
+
+The visible source is authoritative for both project-owned native programs:
+
+```text
+src/renderer/main.c -> build/xfce-plasma-renderer
+src/settings/main.c -> build/xfce-plasma-settings-ui
+```
+
+Normal installation uses those fresh `build/` artifacts. The matching native
+copies in `runtime/` are an explicit release fallback only.
 
 ## Dependencies
 
-Runtime integration uses XFCE/X11, `systemd --user`, `xwinwrap`, `xdotool`, `xrandr`, `xfconf-query`, and ImageMagick (`import` and `convert`). Building requires a C11 compiler, raylib development files, GTK 3 development files, `pkg-config`, and `make`.
+Build requirements:
 
-## Build
+- a C11 compiler and GNU make
+- `pkg-config`
+- raylib development files
+- GTK 3 development files
+- X11 development files
 
-From the repo root:
+Required runtime capabilities:
+
+- Bash
+- an XFCE X11 session with `xfconf-query` and `xrandr`
+- a systemd user manager
+- xwinwrap
+
+Feature-specific tools:
+
+- ImageMagick `import` and `convert` for the game-mode raster handoff
+- `xdotool` for fullscreen/game detection
+- `wmctrl` for the floating Whisker helper
+
+Desktop notifications and a Zenity or rofi shell picker are optional. Run:
 
 ```bash
+make check-build-deps
+make check-runtime-deps
 make check-deps
+```
+
+Missing dependencies produce concise package/capability messages rather than
+compiler or pkg-config output.
+
+## Build and test
+
+```bash
+make clean
 make
 make check
 ```
 
-Dependency checks separate build requirements from required, feature-specific, and optional runtime capabilities.
+Both binaries report the single version from `VERSION`:
 
-## Install
+```bash
+build/xfce-plasma-renderer --version
+build/xfce-plasma-settings-ui --version
+```
 
-Normal installation compiles the visible C sources first and installs the resulting `build/` binaries:
+`make check` builds first, then runs the shell tests. It does not install,
+restart the desktop, or overwrite live user data.
 
-From the repo root:
+## Install and upgrade
+
+Preview the exact user-scoped operation:
+
+```bash
+./install.sh --check
+./install.sh --dry-run
+```
+
+Install freshly built project binaries:
 
 ```bash
 ./install.sh
 ```
 
-Then reload/restart the session pieces:
+No root access is used. Files are installed below the current user's XDG
+configuration, data, and state roots plus `~/.local/bin`,
+`~/.local/lib`, and `~/.local/opt`.
+
+Repeated installation is a deterministic upgrade. The installer validates the
+old manifest, writes individual files atomically, removes obsolete files owned
+by the old manifest, and commits the new manifest last. It never places user
+configuration, current state, or user-created shaders in the removal set.
+
+Precompiled project binaries are available only as an explicit fallback:
+
+```bash
+./install.sh --use-bundled-runtime
+```
+
+This option does not solve the reference xfdesktop artifact's compiled-prefix
+limitation. Read `docs/binary-provenance.md` before using it on another account.
+
+After installation:
 
 ```bash
 systemctl --user daemon-reload
@@ -63,112 +170,213 @@ systemctl --user restart tie-dye-wallpaper-mvp.service
 ~/.local/bin/start-transparent-xfdesktop-session
 ```
 
-The installer resolves the current user and XDG paths at runtime. It does not rewrite author-specific paths or overwrite user-created shaders.
+## Uninstall and recovery
 
-Repeated installs are deterministic upgrades: the installer validates the previous project manifest, installs individual files atomically, removes only obsolete project-owned paths, and commits the new manifest last. User configuration, state, and user shaders are not part of that removal set. Use `./install.sh --dry-run` to inspect the planned origin, file count, and stale-file removals without changing the target HOME.
+Preview or perform manifest-bounded uninstall:
 
-## Runtime Model
-
-XFWM remains the window manager. XFWM's compositor is disabled and Picom v13 provides compositing/window animation.
-
-The background animation is rendered by:
-
-```text
-xwinwrap -> tie-dye-wallpaper -> shader.fs
+```bash
+./install.sh --dry-run --uninstall
+./install.sh --uninstall
 ```
 
-A patched/custom `xfdesktop` provides the desktop icon layer with transparent background. The animation shows through, but XFCE desktop icons remain available.
+Uninstall removes project-owned installed files only. Configuration, state,
+user shaders, and anything outside the approved paths survive.
 
-## Game Mode
+To return immediately to an ordinary XFCE desktop:
 
-`game-mode-guard` watches process patterns in:
-
-```text
-~/.config/game-mode-guard/patterns
+```bash
+~/.local/bin/restore-packaged-xfdesktop
+xfconf-query -c xfwm4 -p /general/use_compositing -s true
 ```
 
-When a game starts:
+If the project helper is unavailable:
 
-1. waits a launch grace period
-2. captures and darkens the current animation into per-monitor static XFCE wallpapers
-3. stops the animated renderer and project Picom
-4. disables XFWM compositing
+```bash
+systemctl --user disable --now tie-dye-wallpaper-mvp.service xfdesktop-transparent.service
+pkill -x xwinwrap
+xfdesktop --disable-wm-check
+```
 
-When the game exits, the static raster fades to black, the previous XFCE wallpaper properties are restored, and the full-color renderer fades back in. Wallpaper, Picom, and XFWM states are restored only when they were active before the game.
+## Settings and everyday use
 
-The guard is intentionally generic; it is not tied to Cyberpunk or any one game.
-
-## Important Commands
-
-The panel includes all wallpaper profiles (including Ricky, Red Forest, and Boku City), a live GLSL source editor with create/import/remove controls, speed and safety controls, services, diagnostics, and editable XFCE shortcuts.
-
-Open the single unified settings panel:
+Open the unified settings application:
 
 ```bash
 ~/.local/bin/xfce-plasma-settings
 ```
 
-Start/restore the full wallpaper plus desktop-icon stack:
+The Collection view presents responsive static thumbnails, display names,
+categories, descriptions, origin badges, and a clear active state. It keeps
+selection, previous/next, motion speed, pause/resume, preview, and service
+status available without opening an editor.
+
+Create / Advanced contains GLSL editing, create, duplicate, import, replace,
+local deletion, editable keybindings, game/desktop controls, and diagnostics.
+Bundled shaders can be edited for compatibility but cannot be deleted; duplicate
+one before making a user-owned variant.
+
+Command-line equivalents include:
+
+```bash
+animated-wallpaper-picker next
+animated-wallpaper-picker previous
+animated-wallpaper-picker set ricky.fs
+animated-wallpaper-speed up
+animated-wallpaper-speed down
+xfce-plasma-settings shortcuts list
+```
+
+The installed default seed is currently Motion Halftone. Upgrades preserve the
+user's current selection rather than silently changing it.
+
+Default shortcuts:
+
+```text
+Ctrl+Alt+Shift+Left/Right  previous/next shader
+Ctrl+Alt+Shift+Up/Down     slower/faster motion
+Ctrl+Alt+Shift+F12         emergency animation stop
+```
+
+All shortcut bindings can be changed in the settings application.
+
+## Shader collection and authoring
+
+The bundled gallery is curated into Ambient, Graphic, and Scenic groups. Shader
+identity remains in the artwork; the UI does not rewrite shader code to
+normalize it.
+
+Fragment shaders use GLSL 3.30. `resolution` and `time` uniforms are required.
+`speed`, `fade`, and `fadeTarget` are supported optional uniforms. Shader
+filenames must end in `.fs`, use safe filename characters, and cannot begin
+with `.` or `-`.
+
+Optional metadata uses a neighboring `.meta` sidecar with simple `key=value`
+fields:
+
+```text
+id
+display_name
+category
+description
+author
+thumbnail
+sort_order
+```
+
+Static repository thumbnails follow
+`assets/thumbnails/<shader-id>.png`. Missing metadata or thumbnails receive a
+readable filename-derived label and a neutral fallback. No thumbnail daemon is
+run and thumbnails are not regenerated at UI startup.
+
+User shaders live under
+`${XDG_DATA_HOME:-$HOME/.local/share}/xfce-plasma/user-shaders`. A bad hot
+reload leaves the previous GPU program running; a bad initial shader falls back
+in memory to a safe built-in gradient.
+
+See `docs/shader-api.md` for the complete contract and examples.
+
+## Game mode
+
+Game detection patterns are stored in:
+
+```text
+~/.config/game-mode-guard/patterns
+```
+
+When a match starts, the guard captures the animated desktop, reduces
+saturation and brightness, assigns per-monitor static XFCE wallpapers, then
+stops animation and project Picom. When the match exits, the raster fades to
+black and the previous wallpaper/compositor state and full-color animation
+return. Only components active before the handoff are restored.
+
+## Diagnostics
+
+```bash
+make doctor
+~/.local/bin/xfce-plasma-doctor
+~/.local/bin/xfce-plasma-settings version
+```
+
+Doctor reports `OK`, `WARNING`, `ERROR`, and `OPTIONAL` states with one
+corrective action for each problem. It checks the X11 session, DISPLAY,
+binaries and versions, shaders, writable XDG paths, services, process counts,
+Picom, transparent xfdesktop, optional game-guard tools, and source/install
+artifact mismatches.
+
+## Troubleshooting
+
+### Black wallpaper
+
+Run `xfce-plasma-doctor`, confirm DISPLAY/X11 and both desktop services, then
+inspect:
+
+```bash
+journalctl --user -u tie-dye-wallpaper-mvp.service --since "10 minutes ago"
+```
+
+Use `animated-wallpaper-picker set motion-halftone.fs` to select a known bundled
+shader. If the renderer itself fails, restore ordinary XFCE using the recovery
+commands above.
+
+### Shader compile failure
+
+The renderer keeps the previous program on a failed reload. Read the renderer
+journal for the GLSL compiler message. Confirm `#version 330`, `time`,
+`resolution`, and assignment to `finalColor`; then save again.
+
+### Desktop icons but no animation, or animation but no icons
+
+Restart the coordinated stack:
 
 ```bash
 ~/.local/bin/start-animated-wallpaper-with-xfdesktop-icons
 ```
 
-Switch animated wallpapers:
+Confirm `/backdrop/transparent-background` is enabled in xfconf and that only
+one xfdesktop process is running. Do not replace the live patched xfdesktop
+blindly when doctor reports a repository/live checksum difference.
+
+### Missing transparency
+
+Confirm Picom is running and the patched xfdesktop service, not the packaged
+xfdesktop, owns the icon layer. Check:
 
 ```bash
-~/.local/bin/animated-wallpaper-picker next
-~/.local/bin/animated-wallpaper-picker previous
+systemctl --user status xfdesktop-transparent.service --no-pager
+pgrep -af xfdesktop
 ```
 
-Adjust speed live:
+### Picom conflict
+
+Only one compositor should be active. Stop another Picom instance and disable
+XFWM compositing while project Picom runs. To abandon project Picom, stop it and
+set `/general/use_compositing` back to `true` in the `xfwm4` channel.
+
+### Wrong session type
+
+xfcePlasma supports XFCE on X11 only. Log out and choose an Xorg/X11 session if
+`echo "$XDG_SESSION_TYPE"` does not print `x11`.
+
+### Service does not start
+
+Use doctor, then:
 
 ```bash
-~/.local/bin/animated-wallpaper-speed up
-~/.local/bin/animated-wallpaper-speed down
+systemctl --user daemon-reload
+systemctl --user status SERVICE.service --no-pager
+journalctl --user -u SERVICE.service --since "10 minutes ago"
 ```
 
-Stop wallpaper animation:
+Verify that the user systemd manager has DISPLAY and XAUTHORITY from the current
+session.
 
-```bash
-~/.local/bin/stop-animated-wallpaper
-```
+## Provenance and release status
 
-Wallpaper hotkeys:
+`docs/binary-provenance.md` records upstream projects, versions/commits,
+licenses, patches, build paths, limitations, and checksums for all opaque
+components. Build scripts download source only when explicitly invoked; normal
+startup and installation never download or replace system software.
 
-```text
-Ctrl+Alt+Shift+Left/Right -> previous/next wallpaper
-Ctrl+Alt+Shift+Up/Down    -> slower/faster wallpaper speed
-```
-
-Edit shortcuts from the same panel or CLI:
-
-```bash
-~/.local/bin/xfce-plasma-settings shortcuts list
-~/.local/bin/xfce-plasma-settings shortcuts set wallpaper-next "<Super>Right"
-```
-
-Emergency shortcut:
-
-```text
-Ctrl+Alt+Shift+F12 -> ~/.local/bin/stop-animated-wallpaper
-```
-
-Restart Picom effects:
-
-```bash
-systemd-run --user --unit=picom-effects --collect ~/.local/bin/start-picom-effects
-```
-
-Check game guard:
-
-```bash
-systemctl --user status game-mode-guard.service --no-pager
-journalctl --user -u game-mode-guard.service -f
-```
-
-## Notes
-
-This is designed for X11. Wayland behavior is not expected to match because `xwinwrap`, `ximagesrc`-style assumptions, and root-window compositing differ.
-
-The renderer and unified GTK settings panel are built from `src/` with `make`. Normal installation builds and installs those fresh `build/` artifacts. The matching project binaries under `runtime/` are retained only as an explicit fallback or release convenience via `./install.sh --use-bundled-runtime`; bundled Picom and patched xfdesktop remain compatibility components pending their separate reproducibility work.
+The repository does not yet include a maintainer-selected project-wide license,
+and the exact source/license of the external reference xwinwrap remains
+unresolved. Those are public-release blockers, not hidden assumptions.

@@ -2,7 +2,7 @@
 Type=Application
 Name=Picom v13 Effects
 Comment=Window animations and compositing while XFWM manages windows
-Exec=systemd-run --user --unit=picom-effects --collect /home/freezer/.local/bin/start-picom-effects
+Exec=sh -c "exec systemd-run --user --unit=picom-effects --collect \"\\$HOME/.local/bin/start-picom-effects\""
 OnlyShowIn=XFCE;
-X-GNOME-Autostart-enabled=true
+X-GNOME-Autostart-enabled=false
 Terminal=false

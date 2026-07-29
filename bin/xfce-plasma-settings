@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
+xfce_plasma_export_session_env
+
+run_bin() { "$XFCE_PLASMA_BIN_DIR/$1" "${@:2}"; }
+show_text() { local title=$1; shift; if command -v zenity >/dev/null 2>&1; then "$@" 2>&1 | zenity --text-info --title="$title" --width=760 --height=560; else "$@"; fi; }
+choose_action() { zenity --list --title="xfcePlasma Settings" --text="Animated desktop settings" --column="Section" --column="Current state" --print-column=1 --width=620 --height=520 \
+  "Wallpaper" "$(run_bin animated-wallpaper-picker current)" \
+  "Animation Speed" "$(run_bin animated-wallpaper-speed current)" \
+  "Game Mode" "$(systemctl --user is-active game-mode-guard.service 2>/dev/null || true)" \
+  "Picom Effects" "$(systemctl --user is-active picom-effects.service 2>/dev/null || true)" \
+  "Transparent Desktop" "$(systemctl --user is-active xfdesktop-transparent.service 2>/dev/null || true)" \
+  "Monitor Status" "$(xrandr --query 2>/dev/null | awk '/ connected/{count++} END{print count+0 " connected"}')" \
+  "Diagnostics" "Run complete doctor" \
+  "Recovery" "Restart the desktop stack" \
+  "Quit" "Close settings" 2>/dev/null; }
+choose_speed() { local speed; speed=$(zenity --list --radiolist --title="Animation Speed" --column="" --column="Preset" TRUE "$(run_bin animated-wallpaper-speed current)" FALSE frozen FALSE slow FALSE medium FALSE motion-sickness --print-column=2 2>/dev/null) || return 0; [ -z "$speed" ] || run_bin animated-wallpaper-speed "$speed"; }
+choose_game_mode() { local action; action=$(zenity --list --title="Game Mode" --column="Action" --column="Description" "Enable" "Start and enable the guard" "Disable" "Stop and disable the guard" "Restart" "Restart the guard" 2>/dev/null) || return 0; case "$action" in Enable) systemctl --user enable --now game-mode-guard.service ;; Disable) systemctl --user disable --now game-mode-guard.service ;; Restart) systemctl --user restart game-mode-guard.service ;; esac; }
+choose_picom() { local action; action=$(zenity --list --title="Picom Effects" --column="Action" "Start" "Stop" "Restart" 2>/dev/null) || return 0; case "$action" in Start) systemd-run --user --unit=picom-effects --collect "$XFCE_PLASMA_BIN_DIR/start-picom-effects" >/dev/null ;; Stop) systemctl --user stop picom-effects.service ;; Restart) systemctl --user restart picom-effects.service ;; esac; }
+choose_desktop() { local action; action=$(zenity --list --title="Transparent Desktop" --column="Action" "Start" "Stop" "Restart" 2>/dev/null) || return 0; case "$action" in Start) systemctl --user start xfdesktop-transparent.service ;; Stop) systemctl --user stop xfdesktop-transparent.service ;; Restart) systemctl --user restart xfdesktop-transparent.service ;; esac; }
+run_gui() { command -v zenity >/dev/null 2>&1 || { printf "zenity is required for the graphical settings panel\n" >&2; exit 1; }; local section; while section=$(choose_action); do case "$section" in Wallpaper) run_bin animated-wallpaper-picker pick ;; "Animation Speed") choose_speed ;; "Game Mode") choose_game_mode ;; "Picom Effects") choose_picom ;; "Transparent Desktop") choose_desktop ;; "Monitor Status") show_text "Monitor Status" xrandr --query ;; Diagnostics) show_text "xfcePlasma Doctor" "$XFCE_PLASMA_BIN_DIR/xfce-plasma-doctor" --verbose ;; Recovery) run_bin start-transparent-xfdesktop-session ;; Quit|"") break ;; esac; done; }
+
+case "${1:-gui}" in
+  gui|--gui) run_gui ;;
+  status) run_bin xfce-plasma-doctor "${@:2}" ;;
+  wallpaper) shift; run_bin animated-wallpaper-picker "${@:-pick}" ;;
+  speed) shift; run_bin animated-wallpaper-speed "${@:-current}" ;;
+  recover) run_bin start-transparent-xfdesktop-session ;;
+  *) printf "usage: %s [gui|status|wallpaper [ACTION]|speed [ACTION]|recover]\n" "${0##*/}" >&2; exit 2 ;;
+esac

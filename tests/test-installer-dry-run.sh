@@ -18,6 +18,8 @@ case "$dry_output" in *"$test_home/.local/bin"*) ;; *) printf "dry-run omitted t
 HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --user --no-enable >/dev/null
 [ -x "$test_home/.local/bin/animated-wallpaper-picker" ]
 [ -x "$test_home/.local/bin/xfce-plasma-doctor" ]
+[ -x "$test_home/.local/bin/xfce-plasma-settings" ]
+[ -f "$test_home/.local/share/applications/xfce-plasma-settings.desktop" ]
 [ -x "$test_home/.local/bin/restart-animated-wallpaper-renderer" ]
 [ -x "$test_home/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper" ]
 [ -f "$test_home/.config/systemd/user/tie-dye-wallpaper-mvp.service" ]
@@ -31,7 +33,7 @@ pattern_file="$tmp/personal-patterns"
   printf "LOGNAME=%s\n" "freezer"
   printf "DISPLAY=:%s[.]%s\n" "0" "0"
 } > "$pattern_file"
-if rg -n -f "$pattern_file" "$test_home/.local/bin" "$test_home/.config/systemd/user" "$test_home/.config/autostart"; then
+if rg -n -f "$pattern_file" "$test_home/.local/bin" "$test_home/.config/systemd/user" "$test_home/.config/autostart" "$test_home/.local/share/applications"; then
   printf "installed runtime contains a personal path\n" >&2
   exit 1
 fi
@@ -42,6 +44,8 @@ printf "user shader\n" > "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-k
 HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/dev/null
 [ ! -e "$test_home/.local/bin/animated-wallpaper-picker" ]
 [ ! -e "$test_home/.local/bin/xfce-plasma-doctor" ]
+[ ! -e "$test_home/.local/bin/xfce-plasma-settings" ]
+[ ! -e "$test_home/.local/share/applications/xfce-plasma-settings.desktop" ]
 [ ! -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/tie-dye.fs" ]
 [ -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-kept.fs" ]
 [ -e "$test_home/.config/picom/picom.conf" ]

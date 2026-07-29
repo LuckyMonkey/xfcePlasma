@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=xfcePlasma Settings
+Comment=Configure animated wallpaper, effects, game mode, and desktop services
+Exec=sh -c "exec \"\\$HOME/.local/bin/xfce-plasma-settings\""
+Icon=preferences-desktop
+Categories=Settings;DesktopSettings;
+OnlyShowIn=XFCE;
+Terminal=false
+StartupNotify=true

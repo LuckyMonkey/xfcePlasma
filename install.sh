@@ -54,6 +54,7 @@ mkdir -p \
   "$HOME_DIR/.local/lib/tie-dye-wallpaper" \
   "$HOME_DIR/.local/lib/xfce-plasma" \
   "$HOME_DIR/.local/opt/xfdesktop-transparent" \
+  "$HOME_DIR/.local/share/applications" \
   "$HOME_DIR/.config/picom" \
   "$HOME_DIR/.config/game-mode-guard" \
   "$HOME_DIR/.config/autostart" \
@@ -74,6 +75,7 @@ for script in \
   animated-wallpaper-picker \
   animated-wallpaper-speed \
   xfce-plasma-doctor \
+  xfce-plasma-settings \
   start-animated-wallpaper-with-xfdesktop-icons \
   start-transparent-xfdesktop-session \
   run-custom-xfdesktop \
@@ -101,6 +103,10 @@ while IFS= read -r source_file; do record_file "$HOME_DIR/.local/opt/xfdesktop-t
 
 install_user_config "$ROOT/config/picom/picom.conf" "$HOME_DIR/.config/picom/picom.conf"
 install_user_config "$ROOT/config/game-mode-guard/patterns" "$HOME_DIR/.config/game-mode-guard/patterns"
+
+for application in "$ROOT"/applications/*.desktop; do
+  install_text "$application" "$HOME_DIR/.local/share/applications/$(basename "$application")"
+done
 
 for desktop in "$ROOT"/autostart/*.desktop; do
   install_text "$desktop" "$HOME_DIR/.config/autostart/$(basename "$desktop")"

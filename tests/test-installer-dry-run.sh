@@ -35,4 +35,20 @@ if rg -n -f "$pattern_file" "$test_home/.local/bin" "$test_home/.config/systemd/
   exit 1
 fi
 
+printf "keep=true\n" > "$test_home/.config/picom/user-kept.conf"
+printf "user shader\n" > "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-kept.fs"
+[ -s "$test_home/.local/state/xfce-plasma/install-manifest" ]
+HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/dev/null
+[ ! -e "$test_home/.local/bin/animated-wallpaper-picker" ]
+[ ! -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/tie-dye.fs" ]
+[ -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-kept.fs" ]
+[ -e "$test_home/.config/picom/picom.conf" ]
+[ -e "$test_home/.config/picom/user-kept.conf" ]
+[ ! -e "$test_home/.local/state/xfce-plasma/install-manifest" ]
+HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --user --no-enable >/dev/null
+outside_marker="$tmp/outside-kept"
+printf "keep\n" > "$outside_marker"
+printf "%s\n" "$test_home/../outside-kept" > "$test_home/.local/state/xfce-plasma/install-manifest"
+if HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/dev/null 2>&1; then printf "unsafe manifest path was accepted\n" >&2; exit 1; fi
+[ -e "$outside_marker" ]
 printf "test-installer-dry-run ok\n"

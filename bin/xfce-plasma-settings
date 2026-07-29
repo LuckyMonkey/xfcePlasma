@@ -9,7 +9,15 @@ else
 fi
 xfce_plasma_export_session_env
 
-run_bin() { "$XFCE_PLASMA_BIN_DIR/$1" "${@:2}"; }
+run_bin() {
+  local command=$1
+  shift
+  if [ "$XFCE_PLASMA_BIN_DIR" = "$HOME/.local/bin" ] && [ -x "$script_dir/$command" ]; then
+    "$script_dir/$command" "$@"
+  else
+    "$XFCE_PLASMA_BIN_DIR/$command" "$@"
+  fi
+}
 service_status() { systemctl --user is-active "$1" 2>/dev/null || true; }
 
 settings_ui_path() {

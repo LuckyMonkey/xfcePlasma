@@ -741,6 +741,10 @@ int main(int argc, char **argv) {
         return 0;
     }
     gtk_init(&argc, &argv);
+    GtkSettings *gtk_settings = gtk_settings_get_default();
+    if (gtk_settings) {
+        g_object_set(gtk_settings, "gtk-application-prefer-dark-theme", TRUE, NULL);
+    }
     load_css();
     SettingsApp app = {0};
     app.window = gtk_window_new(GTK_WINDOW_TOPLEVEL);

@@ -164,11 +164,15 @@ limitation. Read `docs/binary-provenance.md` before using it on another account.
 After installation:
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user enable --now game-mode-guard.service
-systemctl --user restart tie-dye-wallpaper-mvp.service
-~/.local/bin/start-transparent-xfdesktop-session
+~/.local/bin/start-animated-wallpaper-with-xfdesktop-icons
 ```
+
+XFCE autostart is the single session-start owner for the renderer and
+transparent desktop-icon layer. It waits for the XRandR monitor layout to
+settle, then starts both systemd user services together. Do not separately
+enable those two services: doing so starts the renderer before XFCE finishes
+monitor setup and creates a second restart during login. The game guard remains
+an enabled systemd user service.
 
 ## Uninstall and recovery
 

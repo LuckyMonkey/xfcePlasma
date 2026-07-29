@@ -12,6 +12,3 @@ ExecStartPre=/usr/bin/xfconf-query -c xfce4-desktop -p /backdrop/transparent-bac
 ExecStart=%h/.local/opt/xfdesktop-transparent/bin/xfdesktop --disable-wm-check
 Restart=always
 RestartSec=2
-
-[Install]
-WantedBy=default.target

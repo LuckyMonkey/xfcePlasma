@@ -189,7 +189,11 @@ if [ "$dry_run" = true ]; then
       printf '  obsolete project files to remove: none\n'
     fi
     printf '  preserve: user configuration, state, and user shaders\n'
-    [ "$no_enable" = false ] || printf '  services will not be enabled\n'
+    if [ "$no_enable" = false ]; then
+      printf '  startup: XFCE autostart owns renderer and desktop-icon startup\n'
+    else
+      printf '  service enablement will not be changed\n'
+    fi
   fi
   exit 0
 fi
@@ -295,9 +299,13 @@ cp -f -- "$desired_manifest" "$manifest_tmp"
 chmod 0600 "$manifest_tmp"
 mv -f -- "$manifest_tmp" "$MANIFEST"
 systemctl --user daemon-reload >/dev/null 2>&1 || true
+if [ "$no_enable" = false ]; then
+  # XFCE autostart runs these after RandR monitor layout has settled. Enabling
+  # them in default.target creates an early-start/late-restart race.
+  systemctl --user disable tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >/dev/null 2>&1 || true
+  systemctl --user enable game-mode-guard.service >/dev/null 2>&1 || true
+fi
 
 printf 'Installed xfcePlasma %s for %s from %s.\n' "$(sed -n '1p' "$ROOT/VERSION")" "$USER_NAME" "$install_origin"
 printf 'Recommended next steps:\n'
-printf '  systemctl --user enable --now game-mode-guard.service\n'
-printf '  systemctl --user restart tie-dye-wallpaper-mvp.service\n'
 printf '  %s/start-animated-wallpaper-with-xfdesktop-icons\n' "$BIN_DIR"

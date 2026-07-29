@@ -38,6 +38,13 @@ doctor_report=$(HOME="$test_home" XDG_STATE_HOME="$test_home/.local/state" PATH=
 case "$doctor_report" in *"Project version: $expected_version"*"Install origin: built-from-source"*"xfce-plasma-renderer $expected_version"*"xfce-plasma-settings-ui $expected_version"*) ;; *) printf 'doctor version report is incomplete\n%s\n' "$doctor_report" >&2; exit 1 ;; esac
 [ -f "$test_home/.config/systemd/user/tie-dye-wallpaper-mvp.service" ]
 [ -f "$test_home/.config/autostart/tie-dye-wallpaper.desktop" ]
+if grep -q '^WantedBy=default.target$' \
+  "$test_home/.config/systemd/user/tie-dye-wallpaper-mvp.service" \
+  "$test_home/.config/systemd/user/xfdesktop-transparent.service"; then
+  printf "desktop stack services must be owned by XFCE autostart\n" >&2
+  exit 1
+fi
+grep -q '^X-GNOME-Autostart-enabled=true$' "$test_home/.config/autostart/tie-dye-wallpaper.desktop"
 
 pattern_file="$tmp/personal-patterns"
 {

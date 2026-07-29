@@ -12,6 +12,3 @@ ExecStartPre=/usr/bin/sleep 1
 ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 /usr/local/bin/xwinwrap -b -s -fs -st -sp -ni -nf -ov -fdt -un -- %h/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper --wid WID
 Restart=on-failure
 RestartSec=2
-
-[Install]
-WantedBy=default.target

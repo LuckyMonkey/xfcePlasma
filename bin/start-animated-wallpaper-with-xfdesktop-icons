@@ -9,5 +9,31 @@ else
 fi
 xfce_plasma_export_session_env
 xfce_plasma_mkdirs
-sleep "${WALLPAPER_STACK_DELAY:-8}"
+
+wait_for_stable_display() {
+  local previous="" current="" stable=0 attempt
+
+  if [ -n "${WALLPAPER_STACK_DELAY:-}" ]; then
+    sleep "$WALLPAPER_STACK_DELAY"
+    return
+  fi
+  command -v xrandr >/dev/null 2>&1 || return
+
+  for attempt in {1..12}; do
+    current=$(
+      xrandr --current 2>/dev/null |
+        awk '/^Screen 0:/ { gsub(/,/, "", $8); gsub(/,/, "", $10); print $8 "x" $10; exit }'
+    )
+    if [ -n "$current" ] && [ "$current" = "$previous" ]; then
+      stable=$((stable + 1))
+      [ "$stable" -ge 2 ] && return
+    else
+      previous=$current
+      stable=0
+    fi
+    sleep 1
+  done
+}
+
+wait_for_stable_display
 xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log" 2>&1 || true

@@ -40,6 +40,8 @@ fi
 
 printf "keep=true\n" > "$test_home/.config/picom/user-kept.conf"
 printf "user shader\n" > "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-kept.fs"
+mkdir -p "$test_home/.local/share/xfce-plasma/user-shaders"
+printf "user data shader\n" > "$test_home/.local/share/xfce-plasma/user-shaders/user-data-kept.fs"
 [ -s "$test_home/.local/state/xfce-plasma/install-manifest" ]
 HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/dev/null
 [ ! -e "$test_home/.local/bin/animated-wallpaper-picker" ]
@@ -48,6 +50,7 @@ HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --uninstall >/d
 [ ! -e "$test_home/.local/share/applications/xfce-plasma-settings.desktop" ]
 [ ! -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/tie-dye.fs" ]
 [ -e "$test_home/.local/lib/tie-dye-wallpaper/shaders/user-kept.fs" ]
+[ -e "$test_home/.local/share/xfce-plasma/user-shaders/user-data-kept.fs" ]
 [ -e "$test_home/.config/picom/picom.conf" ]
 [ -e "$test_home/.config/picom/user-kept.conf" ]
 [ ! -e "$test_home/.local/state/xfce-plasma/install-manifest" ]

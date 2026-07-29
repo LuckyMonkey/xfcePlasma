@@ -397,6 +397,12 @@ Clearly state:
 
 PHASE 7 — LIVE SHADER RELOAD
 
+Progress (2026-07-29): implemented atomic picker updates, inotify-based C
+renderer reload, candidate validation with current-shader retention, fade
+transitions, a built-in startup fallback, user-add support, and regression
+tests. Live verification confirmed that xwinwrap, renderer, xfdesktop, and the
+wallpaper X window all keep the same IDs during a shader change.
+
 Improve shader selection so changing shaders does not require two full service restarts.
 
 Preferred behavior:

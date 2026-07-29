@@ -12,12 +12,10 @@ fi
 
 RUNTIME=${WALLPAPER_RUNTIME:-$HOME/.local/lib/tie-dye-wallpaper}
 SHADER_DIR=${WALLPAPER_SHADER_DIR:-$RUNTIME/shaders}
+USER_SHADER_DIR=${WALLPAPER_USER_SHADER_DIR:-$XFCE_PLASMA_USER_SHADER_DIR}
 ACTIVE_SHADER=${WALLPAPER_ACTIVE_SHADER:-$RUNTIME/shader.fs}
 STATE_DIR=${WALLPAPER_STATE_DIR:-$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR}
 STATE_FILE=$STATE_DIR/current-shader
-SERVICE=${WALLPAPER_SERVICE:-tie-dye-wallpaper-mvp.service}
-DESKTOP_SERVICE=${WALLPAPER_DESKTOP_SERVICE:-xfdesktop-transparent.service}
-LOG_FILE=${WALLPAPER_PICKER_LOG:-$XFCE_PLASMA_LOG_DIR/animated-wallpaper-picker.log}
 
 ORDER=(
     tie-dye.fs
@@ -48,6 +46,17 @@ notify() {
     command -v notify-send >/dev/null 2>&1 && notify-send "Animated wallpaper" "$1" >/dev/null 2>&1 || true
 }
 
+shader_path() {
+    local name=$1
+    if [ -f "$SHADER_DIR/$name" ]; then
+        printf '%s\n' "$SHADER_DIR/$name"
+    elif [ -f "$USER_SHADER_DIR/$name" ]; then
+        printf '%s\n' "$USER_SHADER_DIR/$name"
+    else
+        return 1
+    fi
+}
+
 is_ordered() {
     local name=$1 item
     for item in "${ORDER[@]}"; do
@@ -59,18 +68,24 @@ is_ordered() {
 available() {
     local name
     for name in "${ORDER[@]}"; do
-        [ -f "$SHADER_DIR/$name" ] && printf '%s\n' "$name"
+        shader_path "$name" >/dev/null 2>&1 && printf '%s\n' "$name"
     done
-    find "$SHADER_DIR" -maxdepth 1 -type f -name '*.fs' -printf '%f\n' 2>/dev/null | sort | while IFS= read -r name; do
-        is_ordered "$name" || printf '%s\n' "$name"
-    done
+    {
+        local directory
+        for directory in "$SHADER_DIR" "$USER_SHADER_DIR"; do
+            [ ! -d "$directory" ] || find "$directory" -maxdepth 1 -type f -name '*.fs' -printf '%f\n'
+        done
+        true
+    } 2>/dev/null | sort -u | while IFS= read -r name; do
+            is_ordered "$name" || printf '%s\n' "$name"
+        done
 }
 
 current() {
-    local saved active_hash name shader_hash
+    local saved active_hash name shader_hash source
     if [ -s "$STATE_FILE" ]; then
         saved=$(cat "$STATE_FILE")
-        if [ -f "$SHADER_DIR/$saved" ]; then
+        if shader_path "$saved" >/dev/null 2>&1; then
             printf '%s\n' "$saved"
             return
         fi
@@ -83,7 +98,8 @@ current() {
 
     active_hash=$(sha256sum "$ACTIVE_SHADER" 2>/dev/null | awk '{print $1}' || true)
     while IFS= read -r name; do
-        shader_hash=$(sha256sum "$SHADER_DIR/$name" 2>/dev/null | awk '{print $1}' || true)
+        source=$(shader_path "$name" || true)
+        shader_hash=$(sha256sum "$source" 2>/dev/null | awk '{print $1}' || true)
         if [ -n "$active_hash" ] && [ "$active_hash" = "$shader_hash" ]; then
             printf '%s\n' "$name"
             return
@@ -140,14 +156,26 @@ choose_gui() {
 
 apply_shader() {
     local name=$1 src
-    src=$SHADER_DIR/$name
+    src=$(shader_path "$name" || true)
     [ -f "$src" ] || { notify "Missing shader: $name"; exit 1; }
     xfce_plasma_mkdirs
     mkdir -p "$STATE_DIR" "$(dirname "$ACTIVE_SHADER")"
-    cp -f "$src" "$ACTIVE_SHADER"
+    xfce_plasma_atomic_copy "$src" "$ACTIVE_SHADER"
     xfce_plasma_atomic_write "$STATE_FILE" "$name"
-    xfce_plasma_restart_desktop_stack "$SERVICE" "$DESKTOP_SERVICE" >"$LOG_FILE" 2>&1 || true
     notify "$(label_for "$name")"
+}
+
+user_add() {
+    local src=$1 name
+    [ -f "$src" ] || { printf 'Shader file not found: %s\n' "$src" >&2; return 1; }
+    name=$(basename "$src")
+    case "$name" in
+        *.fs) ;;
+        *) printf 'Shader must use the .fs extension\n' >&2; return 1;;
+    esac
+    [ ! -e "$SHADER_DIR/$name" ] || { printf 'Built-in shader already exists: %s\n' "$name" >&2; return 1; }
+    xfce_plasma_atomic_copy "$src" "$USER_SHADER_DIR/$name"
+    printf '%s\n' "$name"
 }
 
 case "${1:-pick}" in
@@ -156,6 +184,7 @@ case "${1:-pick}" in
     set|--set) shift; choice=${1:-};;
     list|--list) available; exit 0;;
     current|--current) current; exit 0;;
+    user-add|--user-add) shift; user_add "${1:-}"; exit $?;;
     pick|--pick) choice=$(choose_gui);;
     *.fs) choice=$1;;
     *) choice=$(choose_gui);;

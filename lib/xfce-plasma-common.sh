@@ -73,6 +73,20 @@ xfce_plasma_atomic_write() {
   mv -f "$tmp" "$path"
 }
 
+xfce_plasma_atomic_copy() {
+  local source=$1 path=$2 dir base tmp
+  dir=$(dirname "$path")
+  base=$(basename "$path")
+  mkdir -p "$dir"
+  tmp=$(mktemp "$dir/.$base.XXXXXX") || return 1
+  if ! cp -f -- "$source" "$tmp"; then
+    rm -f -- "$tmp"
+    return 1
+  fi
+  chmod 0644 "$tmp" 2>/dev/null || true
+  mv -f -- "$tmp" "$path"
+}
+
 xfce_plasma_config_get() {
   file=$1
   key=$2

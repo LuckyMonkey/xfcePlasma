@@ -49,17 +49,27 @@ current=$("$repo_root/bin/animated-wallpaper-picker" current)
 "$repo_root/bin/animated-wallpaper-picker" set 'custom space.fs'
 [ "$(cat "$runtime/shader.fs")" = "shader custom" ]
 [ "$(cat "$XDG_STATE_HOME/tie-dye-wallpaper/current-shader")" = "custom space.fs" ]
-[ "$(grep -cx -- '--user stop xfdesktop-transparent.service' "$SYSTEMCTL_LOG")" -eq 1 ]
-[ "$(grep -cx -- '--user restart tie-dye-wallpaper-mvp.service' "$SYSTEMCTL_LOG")" -eq 1 ]
-[ "$(grep -cx -- '--user start xfdesktop-transparent.service' "$SYSTEMCTL_LOG")" -eq 1 ]
-[ "$(sed -n '1p' "$SYSTEMCTL_LOG")" = "--user stop xfdesktop-transparent.service" ]
-[ "$(sed -n '2p' "$SYSTEMCTL_LOG")" = "--user restart tie-dye-wallpaper-mvp.service" ]
-[ "$(sed -n '3p' "$SYSTEMCTL_LOG")" = "--user start xfdesktop-transparent.service" ]
+[ ! -e "$SYSTEMCTL_LOG" ]
 
 next=$("$repo_root/bin/animated-wallpaper-picker" next; cat "$XDG_STATE_HOME/tie-dye-wallpaper/current-shader")
 case "$next" in
   *tie-dye.fs) ;;
   *) echo "unexpected next state: $next" >&2; exit 1;;
 esac
+
+printf 'shader imported\n' > "$tmp/user shader.fs"
+added=$("$repo_root/bin/animated-wallpaper-picker" user-add "$tmp/user shader.fs")
+[ "$added" = "user shader.fs" ]
+[ "$(cat "$XDG_DATA_HOME/xfce-plasma/user-shaders/user shader.fs")" = "shader imported" ]
+"$repo_root/bin/animated-wallpaper-picker" set "user shader.fs"
+[ "$(cat "$runtime/shader.fs")" = "shader imported" ]
+[ "$("$repo_root/bin/animated-wallpaper-picker" current)" = "user shader.fs" ]
+[ ! -e "$SYSTEMCTL_LOG" ]
+before=$(cat "$runtime/shader.fs")
+if "$repo_root/bin/animated-wallpaper-picker" set "missing shader.fs"; then
+  echo "missing shader unexpectedly accepted" >&2
+  exit 1
+fi
+[ "$(cat "$runtime/shader.fs")" = "$before" ]
 
 printf 'test-picker ok\n'

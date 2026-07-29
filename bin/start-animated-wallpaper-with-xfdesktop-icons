@@ -10,6 +10,4 @@ fi
 xfce_plasma_export_session_env
 xfce_plasma_mkdirs
 sleep "${WALLPAPER_STACK_DELAY:-8}"
-systemctl --user restart tie-dye-wallpaper-mvp.service >"$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log" 2>&1 || true
-sleep 1
-systemctl --user restart xfdesktop-transparent.service >>"$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log" 2>&1 || true
+xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log" 2>&1 || true

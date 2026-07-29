@@ -16,6 +16,7 @@ ACTIVE_SHADER=${WALLPAPER_ACTIVE_SHADER:-$RUNTIME/shader.fs}
 STATE_DIR=${WALLPAPER_STATE_DIR:-$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR}
 STATE_FILE=$STATE_DIR/current-shader
 SERVICE=${WALLPAPER_SERVICE:-tie-dye-wallpaper-mvp.service}
+DESKTOP_SERVICE=${WALLPAPER_DESKTOP_SERVICE:-xfdesktop-transparent.service}
 LOG_FILE=${WALLPAPER_PICKER_LOG:-$XFCE_PLASMA_LOG_DIR/animated-wallpaper-picker.log}
 
 ORDER=(
@@ -145,7 +146,7 @@ apply_shader() {
     mkdir -p "$STATE_DIR" "$(dirname "$ACTIVE_SHADER")"
     cp -f "$src" "$ACTIVE_SHADER"
     xfce_plasma_atomic_write "$STATE_FILE" "$name"
-    systemctl --user restart "$SERVICE" >"$LOG_FILE" 2>&1 || true
+    xfce_plasma_restart_desktop_stack "$SERVICE" "$DESKTOP_SERVICE" >"$LOG_FILE" 2>&1 || true
     notify "$(label_for "$name")"
 }
 

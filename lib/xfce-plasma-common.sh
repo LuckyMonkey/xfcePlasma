@@ -98,4 +98,17 @@ xfce_plasma_config_get() {
   ' "$file"
 }
 
+xfce_plasma_restart_desktop_stack() {
+  local wallpaper_unit=${1:-tie-dye-wallpaper-mvp.service}
+  local desktop_unit=${2:-xfdesktop-transparent.service}
+  local settle_seconds=${WALLPAPER_STACK_SETTLE_SECONDS:-1}
+  local status=0
+
+  systemctl --user stop "$desktop_unit" || true
+  systemctl --user restart "$wallpaper_unit" || status=$?
+  sleep "$settle_seconds"
+  systemctl --user start "$desktop_unit" || status=$?
+  return "$status"
+}
+
 xfce_plasma_init

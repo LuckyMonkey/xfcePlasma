@@ -49,8 +49,12 @@ current=$("$repo_root/bin/animated-wallpaper-picker" current)
 "$repo_root/bin/animated-wallpaper-picker" set 'custom space.fs'
 [ "$(cat "$runtime/shader.fs")" = "shader custom" ]
 [ "$(cat "$XDG_STATE_HOME/tie-dye-wallpaper/current-shader")" = "custom space.fs" ]
-[ "$(grep -c 'restart tie-dye-wallpaper-mvp.service' "$SYSTEMCTL_LOG")" -eq 1 ]
-! grep -q 'restart xfdesktop-transparent.service' "$SYSTEMCTL_LOG"
+[ "$(grep -cx -- '--user stop xfdesktop-transparent.service' "$SYSTEMCTL_LOG")" -eq 1 ]
+[ "$(grep -cx -- '--user restart tie-dye-wallpaper-mvp.service' "$SYSTEMCTL_LOG")" -eq 1 ]
+[ "$(grep -cx -- '--user start xfdesktop-transparent.service' "$SYSTEMCTL_LOG")" -eq 1 ]
+[ "$(sed -n '1p' "$SYSTEMCTL_LOG")" = "--user stop xfdesktop-transparent.service" ]
+[ "$(sed -n '2p' "$SYSTEMCTL_LOG")" = "--user restart tie-dye-wallpaper-mvp.service" ]
+[ "$(sed -n '3p' "$SYSTEMCTL_LOG")" = "--user start xfdesktop-transparent.service" ]
 
 next=$("$repo_root/bin/animated-wallpaper-picker" next; cat "$XDG_STATE_HOME/tie-dye-wallpaper/current-shader")
 case "$next" in

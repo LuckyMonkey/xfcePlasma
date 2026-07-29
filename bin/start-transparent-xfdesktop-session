@@ -24,8 +24,6 @@ if ! systemctl --user is-active --quiet picom-effects.service; then
 fi
 
 systemctl --user daemon-reload
-systemctl --user restart tie-dye-wallpaper-mvp.service
-
 xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 2
 xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s true
-systemctl --user restart xfdesktop-transparent.service
+xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service

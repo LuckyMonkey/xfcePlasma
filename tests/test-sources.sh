@@ -24,6 +24,10 @@ xfce_plasma_source_migrate
 good=$tmp/good.source
 printf 'type=video\nid=my-video\npath=%s\nloop=true\nmuted=true\nfit=cover\n' "$tmp/Video With Spaces.webm" > "$good"
 xfce_plasma_source_validate_file "$good"
+xfce_plasma_source_write_definition my-video "$(cat "$good")" >/dev/null
+xfce_plasma_source_write_active video my-video
+xfce_plasma_source_validate_selector "$XFCE_PLASMA_ACTIVE_SOURCE_FILE"
+[ "$(xfce_plasma_source_active_config)" = "$XFCE_PLASMA_SOURCE_DIR/my-video.source" ]
 printf 'type=unknown\nid=bad\n' > "$tmp/bad-type.source"
 ! xfce_plasma_source_validate_file "$tmp/bad-type.source" >/dev/null 2>&1
 printf 'type=video\nid=bad\npath=relative.webm\n' > "$tmp/bad-path.source"

@@ -34,7 +34,7 @@ xfce_plasma_source_canonical_shader_id() {
 
 xfce_plasma_source_known_key() {
   case "$1" in
-    type|id|display_name|path|url|loop|muted|fit|speed|backend|reconnect|reconnect_delay|latency|thumbnail|credential_file|capabilities)
+    type|id|display_name|category|description|author|sort_order|origin|path|url|loop|muted|fit|speed|backend|reconnect|reconnect_delay|latency|thumbnail|credential_file|capabilities)
       return 0 ;;
     *) return 1 ;;
   esac
@@ -51,6 +51,7 @@ xfce_plasma_source_validate_file() {
   local file=$1 raw key type id path url value
   [ -r "$file" ] || { printf 'Source configuration is unreadable: %s\n' "$file" >&2; return 1; }
   while IFS= read -r raw || [ -n "$raw" ]; do
+    raw=${raw#${raw%%[![:space:]]*}}
     case "$raw" in ''|'#'*) continue ;; esac
     case "$raw" in *=*) ;; *) printf 'Invalid source configuration line in %s\n' "$file" >&2; return 1 ;; esac
     key=${raw%%=*}
@@ -71,6 +72,7 @@ xfce_plasma_source_validate_file() {
     video)
       path=$(xfce_plasma_source_value "$file" path)
       case "$path" in /*) ;; *) printf 'Video path must be absolute: %s\n' "$path" >&2; return 1 ;; esac
+      case "$path" in *[[:cntrl:]]*) printf 'Video path contains control characters\n' >&2; return 1 ;; esac
       ;;
     stream)
       url=$(xfce_plasma_source_value "$file" url)
@@ -87,6 +89,66 @@ xfce_plasma_source_validate_file() {
   case "$value" in ''|cover|contain|stretch) ;; *) printf 'Invalid fit mode: %s\n' "$value" >&2; return 1 ;; esac
   value=$(xfce_plasma_source_value "$file" backend)
   case "$value" in ''|automatic|mpv|vlc|raylib|static) ;; *) printf 'Invalid backend: %s\n' "$value" >&2; return 1 ;; esac
+  value=$(xfce_plasma_source_value "$file" speed)
+  if [ -n "$value" ]; then
+    awk -v value="$value" 'BEGIN { exit !(value ~ /^([0-9]+([.][0-9]*)?|[.][0-9]+)$/ && value + 0 >= 0.1 && value + 0 <= 4.0) }' || {
+      printf 'Playback speed must be between 0.1 and 4.0\n' >&2
+      return 1
+    }
+  fi
+}
+
+xfce_plasma_source_validate_selector() {
+  local file=$1 type id raw key
+  [ -r "$file" ] || return 1
+  while IFS= read -r raw || [ -n "$raw" ]; do
+    raw=${raw#${raw%%[![:space:]]*}}
+    case "$raw" in ''|'#'*) continue ;; esac
+    case "$raw" in *=*) key=${raw%%=*} ;; *) return 1 ;; esac
+    key=${key%${key##*[![:space:]]}}
+    case "$key" in type|id) ;; *) return 1 ;; esac
+  done < "$file"
+  type=$(xfce_plasma_source_value "$file" type)
+  id=$(xfce_plasma_source_value "$file" id)
+  xfce_plasma_source_valid_type "$type" && xfce_plasma_source_valid_id "$id"
+}
+
+xfce_plasma_source_definition_file() {
+  xfce_plasma_source_valid_id "$1" || return 1
+  printf '%s/%s.source\n' "$XFCE_PLASMA_SOURCE_DIR" "$1"
+}
+
+xfce_plasma_source_active_config() {
+  local type id definition
+  xfce_plasma_source_validate_selector "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" || return 1
+  type=$(xfce_plasma_source_active_type)
+  case "$type" in
+    shader|fallback) printf '%s\n' "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ;;
+    video|stream)
+      id=$(xfce_plasma_source_active_id)
+      definition=$(xfce_plasma_source_definition_file "$id")
+      xfce_plasma_source_validate_file "$definition" || return 1
+      [ "$(xfce_plasma_source_value "$definition" type)" = "$type" ] || return 1
+      [ "$(xfce_plasma_source_value "$definition" id)" = "$id" ] || return 1
+      printf '%s\n' "$definition"
+      ;;
+  esac
+}
+
+xfce_plasma_source_write_definition() {
+  local id=$1 data=$2 destination
+  xfce_plasma_source_valid_id "$id" || return 1
+  destination=$(xfce_plasma_source_definition_file "$id")
+  xfce_plasma_atomic_write "$destination" "$data"
+  xfce_plasma_source_validate_file "$destination" || { rm -f -- "$destination"; return 1; }
+  printf '%s\n' "$destination"
+}
+
+xfce_plasma_source_slug() {
+  local value
+  value=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+  xfce_plasma_source_valid_id "$value" || value=local-video
+  printf '%s\n' "$value"
 }
 
 xfce_plasma_source_write_active() {
@@ -115,7 +177,7 @@ xfce_plasma_source_migrate() {
   local legacy id type migration_log
   xfce_plasma_mkdirs
   if [ -s "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ]; then
-    xfce_plasma_source_validate_file "$XFCE_PLASMA_ACTIVE_SOURCE_FILE"
+    xfce_plasma_source_validate_selector "$XFCE_PLASMA_ACTIVE_SOURCE_FILE"
     type=$(xfce_plasma_source_active_type)
     id=$(xfce_plasma_source_active_id)
     if [ "$type" = shader ] && [ "$(xfce_plasma_source_value "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" id)" != "$id" ]; then

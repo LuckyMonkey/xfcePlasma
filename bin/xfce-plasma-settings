@@ -95,8 +95,8 @@ monitor_control() {
 
 shortcut_command() {
   case "$1" in
-    wallpaper-prev) printf '%s/animated-wallpaper-picker prev\n' "$XFCE_PLASMA_BIN_DIR";;
-    wallpaper-next) printf '%s/animated-wallpaper-picker next\n' "$XFCE_PLASMA_BIN_DIR";;
+    wallpaper-prev) printf '%s/xfce-plasma-background previous\n' "$XFCE_PLASMA_BIN_DIR";;
+    wallpaper-next) printf '%s/xfce-plasma-background next\n' "$XFCE_PLASMA_BIN_DIR";;
     speed-up) printf '%s/animated-wallpaper-speed up\n' "$XFCE_PLASMA_BIN_DIR";;
     speed-down) printf '%s/animated-wallpaper-speed down\n' "$XFCE_PLASMA_BIN_DIR";;
     stop-wallpaper) printf '%s/stop-animated-wallpaper\n' "$XFCE_PLASMA_BIN_DIR";;

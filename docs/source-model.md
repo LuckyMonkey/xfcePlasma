@@ -23,7 +23,13 @@ Current shader selections migrate automatically. `tie-dye`, `tie-dye.fs`, and
 `Tie Dye` resolve to `plasma`; the legacy shader state and shader source remain
 untouched. Repeating migration is harmless.
 
-The controller already reserves source types `shader`, `video`, `stream`, and
-`fallback`. This phase routes shaders and the ordinary static fallback through
-the common lifecycle. Media adapters are enabled only as their backend and
-tests land; their absence does not affect shaders.
+The controller recognizes source types `shader`, `video`, `stream`, and
+`fallback`. Raylib remains the shader backend. Local video uses mpv embedded in
+the same xwinwrap X11 window with looping, muted audio, cover/contain/stretch
+fit, safe hardware-decoding selection, and unit-scoped pause/resume. Video
+source files remain in their original location; only a small reference file is
+stored under `$XDG_CONFIG_HOME/xfce-plasma/sources`.
+
+VLC detection and preference validation are present, but actual VLC embedding
+remains experimental until its adapter passes live X11 tests. Missing media
+backends disable media sources without affecting shaders.

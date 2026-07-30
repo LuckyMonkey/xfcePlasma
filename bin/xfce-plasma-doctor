@@ -196,6 +196,9 @@ check_command convert feature "ImageMagick convert" "Install ImageMagick for dar
 check_command xdotool feature xdotool "Install xdotool for game/fullscreen detection."
 check_command wmctrl optional wmctrl "Install wmctrl for the optional floating Whisker helper."
 check_command notify-send optional "desktop notifications" "Install libnotify-bin for notifications."
+check_command mpv feature "mpv video/stream backend" "Install mpv to enable local video and RTSP backgrounds; shaders remain available."
+check_command vlc optional "VLC media backend" "Install VLC only if the experimental alternate media backend is wanted."
+check_command ffmpeg optional "FFmpeg thumbnail/probe tools" "Install FFmpeg only for optional video probing and thumbnail generation."
 if command -v zenity >/dev/null 2>&1; then ok "optional graphical picker is available through zenity"
 elif command -v rofi >/dev/null 2>&1; then ok "optional graphical picker is available through rofi"
 else optional "neither zenity nor rofi is installed" "Install either tool only if the shell picker UI is wanted."; fi
@@ -233,6 +236,19 @@ else warning "selected shader state is missing" "Select a shader once to create 
 check_writable "configuration path" "$XFCE_PLASMA_CONFIG_DIR" "Fix ownership/permissions for the user XDG configuration directory."
 check_writable "state path" "$XFCE_PLASMA_STATE_DIR" "Fix ownership/permissions for the user XDG state directory."
 check_writable "cache path" "$XFCE_PLASMA_CACHE_DIR" "Fix ownership/permissions for the user XDG cache directory."
+
+if [ "$active_source_type" = video ]; then
+  active_config=$(xfce_plasma_source_active_config 2>/dev/null || true)
+  if [ -n "$active_config" ]; then
+    video_path=$(xfce_plasma_source_value "$active_config" path)
+    video_fit=$(xfce_plasma_source_value "$active_config" fit cover)
+    video_loop=$(xfce_plasma_source_value "$active_config" loop true)
+    video_muted=$(xfce_plasma_source_value "$active_config" muted true)
+    if [ -r "$video_path" ]; then ok "selected video is readable: $video_path"
+    else error "selected video is missing or unreadable: $video_path" "Reconnect its storage or choose another background source."; fi
+    ok "video policy: fit=$video_fit loop=$video_loop muted=$video_muted"
+  fi
+fi
 
 printf '\nServices and running stack\n'
 if systemctl --user show-environment >/dev/null 2>&1; then

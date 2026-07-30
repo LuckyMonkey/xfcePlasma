@@ -99,6 +99,16 @@ Feature-specific tools:
 - `xdotool` for fullscreen/game detection
 - `wmctrl` for the floating Whisker helper
 
+Optional media tools:
+
+- mpv for local video and RTSP sources
+- VLC as an alternate experimental backend
+- FFmpeg or ffmpegthumbnailer for explicitly requested thumbnails
+
+Shaders install and run without any media backend. Video files are referenced
+in place, loop silently by default, and use mpv's `auto-safe` hardware decoding
+without assuming a GPU vendor or CUDA.
+
 Desktop notifications and a Zenity or rofi shell picker are optional. Run:
 
 ```bash
@@ -230,6 +240,7 @@ animated-wallpaper-speed down
 xfce-plasma-settings shortcuts list
 xfce-plasma-background status
 xfce-plasma-background shader plasma
+xfce-plasma-background video "/path/to/Rain Loop.webm"
 ```
 
 The common background lifecycle is `start`, `stop`, `restart`, `pause`,

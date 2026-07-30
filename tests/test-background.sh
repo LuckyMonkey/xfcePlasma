@@ -12,6 +12,7 @@ export WALLPAPER_RUNTIME=$XFCE_PLASMA_RENDERER_DIR
 export XFCE_PLASMA_BACKGROUND_UNIT=test-background.service
 export SYSTEMCTL_LOG=$tmp/systemctl.log XWINWRAP_LOG=$tmp/xwinwrap.log
 export RENDERER_LOG=$tmp/renderer.log XFCONF_LOG=$tmp/xfconf.log
+export MPV_LOG=$tmp/mpv.log
 mock_bin=$tmp/bin
 mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$mock_bin" "$XFCE_PLASMA_RENDERER_DIR/shaders"
 
@@ -46,8 +47,17 @@ cat > "$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$RENDERER_LOG"
 MOCK
+cat > "$mock_bin/mpv" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' "$@" > "$MPV_LOG"
+MOCK
+cat > "$mock_bin/vlc" <<'MOCK'
+#!/usr/bin/env bash
+exit 0
+MOCK
 chmod 0755 "$mock_bin"/* "$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper"
 export PATH=$mock_bin:$PATH XFCE_PLASMA_XWINWRAP=$mock_bin/xwinwrap
+export XFCE_PLASMA_MPV=$mock_bin/mpv XFCE_PLASMA_VLC=$mock_bin/vlc
 
 background=$repo_root/bin/xfce-plasma-background
 "$background" migrate >/dev/null
@@ -80,6 +90,41 @@ case "$report" in *'source_type=shader'*'source_id=plasma'*'backend=raylib'*'win
 
 "$background" stop
 [ ! -e "$XDG_RUNTIME_DIR/xfce-plasma/backend.state" ]
+
+video=$tmp/'$(touch PWNED).webm'
+printf 'fake video for command construction\n' > "$video"
+video_id=$("$background" video "$video")
+[ "$video_id" = touch-pwned ]
+[ "$("$background" current)" = video:touch-pwned ]
+catalog=$("$background" catalog)
+case "$catalog" in *$'shader:plasma\tplasma\tPlasma'*$'video:touch-pwned\ttouch-pwned\t$(touch PWNED)'*) ;; *) printf 'background catalog omitted shader or video source\n%s\n' "$catalog" >&2; exit 1 ;; esac
+source_file=$XDG_CONFIG_HOME/xfce-plasma/sources/touch-pwned.source
+[ "$(stat -c %a "$source_file")" = 600 ]
+grep -Fqx "path=$video" "$source_file"
+(
+  cd "$tmp"
+  "$background" run
+)
+[ ! -e "$tmp/PWNED" ]
+grep -qx -- '--wid=0x123abc' "$MPV_LOG"
+grep -qx -- '--loop-file=inf' "$MPV_LOG"
+grep -qx -- '--no-audio' "$MPV_LOG"
+grep -qx -- '--keepaspect=yes' "$MPV_LOG"
+grep -qx -- '--panscan=1.0' "$MPV_LOG"
+grep -qx -- '--hwdec=auto-safe' "$MPV_LOG"
+grep -qx -- '--' "$MPV_LOG"
+grep -Fqx -- "$video" "$MPV_LOG"
+grep -qx 'type=video' "$XDG_RUNTIME_DIR/xfce-plasma/backend.state"
+grep -qx 'backend=mpv' "$XDG_RUNTIME_DIR/xfce-plasma/backend.state"
+
+[ "$(XFCE_PLASMA_MPV=/missing XFCE_PLASMA_VLC=$mock_bin/vlc "$background" detect-backend automatic)" = vlc ]
+if XFCE_PLASMA_MPV=/missing "$background" detect-backend mpv >/dev/null 2>&1; then
+  printf 'explicit missing mpv backend was accepted\n' >&2
+  exit 1
+fi
+SYSTEMCTL_ACTIVE=1 XFCE_PLASMA_MPV=/missing XFCE_PLASMA_VLC=/missing "$background" shader plasma >/dev/null
+grep -qx 'type=shader' "$XDG_STATE_HOME/xfce-plasma/active-source"
+
 if rg -n 'pkill|killall|pkill -f' "$repo_root/bin/xfce-plasma-background" "$repo_root/bin/stop-animated-wallpaper"; then
   printf 'background lifecycle contains broad process killing\n' >&2
   exit 1

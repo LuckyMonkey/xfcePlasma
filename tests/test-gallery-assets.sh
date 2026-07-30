@@ -37,7 +37,7 @@ for shader in "$shader_dir"/*.fs; do
   printf '%s\n' "$order" >> "$tmp/orders"
   shader_count=$((shader_count + 1))
 done
-[ "$shader_count" -eq 11 ]
+[ "$shader_count" -eq 12 ]
 [ "$(sort -u "$tmp/ids" | wc -l)" -eq "$shader_count" ]
 [ "$(sort -u "$tmp/orders" | wc -l)" -eq "$shader_count" ]
 if rg -i 'stunning|immersive|next-generation' "$shader_dir"/*.meta; then

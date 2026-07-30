@@ -190,6 +190,7 @@ case "${1:-gui}" in
   version) version_report;;
   gui|--gui) run_gui;;
   status|diagnostics) shift || true; run_bin xfce-plasma-doctor "${@}";;
+  background) shift; forward_or_default xfce-plasma-background status "$@";;
   wallpaper) shift; forward_or_default animated-wallpaper-picker pick "$@";;
   speed) shift; forward_or_default animated-wallpaper-speed current "$@";;
   shortcuts) shift; shortcut_control "$@";;
@@ -198,5 +199,5 @@ case "${1:-gui}" in
   desktop) shift; desktop_control "${1:-status}";;
   monitors) shift; monitor_control "${1:-status}";;
   recover) run_bin start-transparent-xfdesktop-session;;
-  *) printf 'usage: %s [--version|gui|diagnostics|wallpaper ACTION|speed ACTION|shortcuts ACTION|game ACTION|picom ACTION|desktop ACTION|monitors ACTION|recover]\n' "${0##*/}" >&2; exit 2;;
+  *) printf 'usage: %s [--version|gui|diagnostics|background ACTION|wallpaper ACTION|speed ACTION|shortcuts ACTION|game ACTION|picom ACTION|desktop ACTION|monitors ACTION|recover]\n' "${0##*/}" >&2; exit 2;;
 esac

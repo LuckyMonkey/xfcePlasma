@@ -1,6 +1,6 @@
 # xfcePlasma
 
-xfcePlasma is a shader-driven animated desktop system for XFCE on X11.
+xfcePlasma is a shader-driven animated background system for XFCE on X11.
 
 It combines a native raylib renderer, a GTK 3 settings application, Bash
 controllers, systemd user services, xwinwrap, Picom, and a patched transparent
@@ -27,16 +27,16 @@ for a different target and user prefix.
 GTK settings UI
         |
         v
-Bash controller scripts
+Bash background/source controller
         |
         v
-XDG state, configuration, shader, and metadata files
+validated XDG source state, shader, and metadata files
         |
         v
 systemd user services
         |
         v
-xwinwrap + raylib renderer
+xwinwrap + selected backend (Raylib shaders; media adapters in progress)
         |
         v
 Picom + transparent xfdesktop
@@ -228,9 +228,17 @@ animated-wallpaper-picker set ricky.fs
 animated-wallpaper-speed up
 animated-wallpaper-speed down
 xfce-plasma-settings shortcuts list
+xfce-plasma-background status
+xfce-plasma-background shader plasma
 ```
 
-The installed default seed is currently Motion Halftone. Upgrades preserve the
+The common background lifecycle is `start`, `stop`, `restart`, `pause`,
+`resume`, `status`, and `reload`. The historical
+`tie-dye-wallpaper-mvp.service` filename remains as the single generic
+background service for upgrade compatibility; it is no longer tied to one
+shader implementation.
+
+The featured classic source is Plasma. Upgrades preserve the
 user's current selection rather than silently changing it.
 
 Default shortcuts:
@@ -277,7 +285,13 @@ User shaders live under
 reload leaves the previous GPU program running; a bad initial shader falls back
 in memory to a safe built-in gradient.
 
-See `docs/shader-api.md` for the complete contract and examples.
+Old `tie-dye`, `tie-dye.fs`, and `Tie Dye` selections migrate idempotently to
+`plasma` while the old files remain installed as compatibility aliases. Plasma
+describes the classic procedural graphics effect; it does not refer to KDE
+Plasma.
+
+See `docs/shader-api.md` for the complete contract and examples, and
+`docs/source-model.md` for source state and lifecycle details.
 
 ## Game mode
 

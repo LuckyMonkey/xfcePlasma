@@ -24,6 +24,11 @@ else
   # shellcheck source=/dev/null
   . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
 fi
+if [ -r "$script_dir/../lib/xfce-plasma-sources.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-sources.sh"
+else
+  . "${XFCE_PLASMA_SOURCES:-$HOME/.local/lib/xfce-plasma/xfce-plasma-sources.sh}"
+fi
 
 errors=0
 warnings=0
@@ -130,9 +135,21 @@ picom_bin=$XFCE_PLASMA_BIN_DIR/picom
 shader_dir=$XFCE_PLASMA_RENDERER_DIR/shaders
 active_shader=$XFCE_PLASMA_RENDERER_DIR/shader.fs
 selected_file=$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR/current-shader
+active_source_type=shader
+active_source_id=plasma
+if [ -s "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ]; then
+  active_source_type=$(xfce_plasma_source_active_type)
+  active_source_id=$(xfce_plasma_source_active_id)
+elif [ -s "$selected_file" ]; then
+  active_source_id=$(xfce_plasma_source_canonical_shader_id "$(sed -n '1p' "$selected_file")")
+fi
+backend_name=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" backend 2>/dev/null || printf unavailable)
+backend_pid=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" backend_pid 2>/dev/null || printf 0)
+background_window=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" window_id 2>/dev/null || true)
 
 printf 'xfcePlasma doctor\n'
 printf 'Project version: %s\nInstalled version: %s\nInstall origin: %s\n' "$project_version" "$installed_version" "$install_origin"
+printf 'Active source: %s/%s\nSelected backend: %s\n' "$active_source_type" "$active_source_id" "$backend_name"
 printf 'Renderer path: %s\nSettings UI path: %s\n\n' "$renderer" "$settings_ui"
 
 if [ "$install_origin" = legacy-or-unknown ] || [ "$install_origin" = not-installed ]; then
@@ -191,7 +208,16 @@ check_elf "project Picom" "$picom_bin" "Reinstall the documented Picom compatibi
 [ ! -x "$renderer" ] || check_native_version renderer "$renderer" "$installed_version" "$install_origin"
 [ ! -x "$settings_ui" ] || check_native_version "settings UI" "$settings_ui" "$installed_version" "$install_origin" yes
 
-printf '\nShaders and writable paths\n'
+printf '\nSources, shaders, and writable paths\n'
+if [ -s "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ]; then
+  if xfce_plasma_source_validate_file "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" >/dev/null 2>&1; then
+    ok "active source configuration is valid: $active_source_type/$active_source_id"
+  else
+    error "active source configuration is invalid: $XFCE_PLASMA_ACTIVE_SOURCE_FILE" "Select a valid source with xfce-plasma-background shader SOURCE or fallback."
+  fi
+else
+  warning "new active-source state has not been migrated yet" "Run xfce-plasma-background migrate; the legacy shader selection remains intact."
+fi
 if [ -d "$shader_dir" ]; then
   shader_count=$(find "$shader_dir" -maxdepth 1 -type f -name '*.fs' | wc -l)
   if [ "$shader_count" -gt 0 ]; then ok "$shader_count bundled shader profile(s) found in $shader_dir"
@@ -210,7 +236,7 @@ check_writable "cache path" "$XFCE_PLASMA_CACHE_DIR" "Fix ownership/permissions 
 
 printf '\nServices and running stack\n'
 if systemctl --user show-environment >/dev/null 2>&1; then
-  service_report tie-dye-wallpaper-mvp.service "renderer" yes
+  service_report tie-dye-wallpaper-mvp.service "background session" yes
   service_report xfdesktop-transparent.service "transparent desktop" yes
   service_report game-mode-guard.service "game guard" no
   if systemctl --user is-active --quiet picom-effects.service 2>/dev/null; then ok "Picom effects service is running"
@@ -219,9 +245,15 @@ fi
 renderer_count=$(pgrep -fc '^([^[:space:]]*/)?tie-dye-wallpaper --wid ' || true)
 xfdesktop_count=$(pgrep -xc xfdesktop || true)
 picom_count=$(pgrep -xc picom || true)
-if [ "$renderer_count" -eq 1 ]; then ok "one renderer process is running"
-elif [ "$renderer_count" -gt 1 ]; then warning "$renderer_count renderer processes are running" "Restart tie-dye-wallpaper-mvp.service and check for legacy autostart duplicates."
-else warning "no renderer process is running" "Start tie-dye-wallpaper-mvp.service and inspect its journal."; fi
+if [ "$active_source_type" = shader ]; then
+  if [ "$renderer_count" -eq 1 ]; then ok "one shader renderer process is running"
+  elif [ "$renderer_count" -gt 1 ]; then warning "$renderer_count shader renderer processes are running" "Run xfce-plasma-background restart and check for legacy autostart duplicates."
+  else warning "no shader renderer process is running" "Run xfce-plasma-background start and inspect the background service journal."; fi
+fi
+if [ "$backend_pid" != 0 ] && kill -0 "$backend_pid" 2>/dev/null; then ok "tracked backend PID is running: $backend_pid"
+elif systemctl --user is-active --quiet tie-dye-wallpaper-mvp.service 2>/dev/null; then warning "background service is active without a live tracked backend PID" "Run xfce-plasma-background restart and inspect its status."
+fi
+if [ -n "$background_window" ]; then ok "tracked X11 background window: $background_window"; fi
 if [ "$xfdesktop_count" -eq 1 ]; then ok "one xfdesktop process is running"
 elif [ "$xfdesktop_count" -gt 1 ]; then warning "$xfdesktop_count xfdesktop processes are running" "Restart xfdesktop-transparent.service and remove duplicate XFCE autostarts."
 else warning "no xfdesktop process is running" "Start xfdesktop-transparent.service, or use restore-packaged-xfdesktop for ordinary XFCE."; fi

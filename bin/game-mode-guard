@@ -11,6 +11,7 @@ mkdir -p "$STATE_ROOT/logs"
 LOG=${LOG:-$STATE_ROOT/logs/game-mode-guard.log}
 RESTORE_LOG=${RESTORE_LOG:-$STATE_ROOT/logs/game-mode-desktop-restore.log}
 WALLPAPER_UNIT=${WALLPAPER_UNIT:-tie-dye-wallpaper-mvp.service}
+BACKGROUND_COMMAND=${BACKGROUND_COMMAND:-$HOME/.local/bin/xfce-plasma-background}
 STACK_RESTART_HELPER=${STACK_RESTART_HELPER:-$HOME/.local/bin/restart-animated-wallpaper-renderer}
 RASTER_HELPER=${RASTER_HELPER:-$HOME/.local/bin/game-mode-raster-wallpaper}
 PICOM_HELPER=${PICOM_HELPER:-$HOME/.local/bin/start-picom-effects}
@@ -61,8 +62,7 @@ fullscreen_window_present() {
 game_running() { process_game_running; }
 
 wallpaper_running() {
-    systemctl --user is-active --quiet "$WALLPAPER_UNIT" &&
-        pgrep -af '[/]usr/local/bin/xwinwrap .*tie-dye-wallpaper' >/dev/null 2>&1
+    systemctl --user is-active --quiet "$WALLPAPER_UNIT"
 }
 
 record_desktop_state() {
@@ -73,11 +73,10 @@ record_desktop_state() {
 }
 
 native_fade_stop_wallpaper() {
-    local pids waited
-    pids=$(pgrep -f '^([^[:space:]]*/)?tie-dye-wallpaper --wid ' || true)
-    if [ -n "$pids" ]; then
+    local waited
+    if [ -x "$BACKGROUND_COMMAND" ]; then
         log "frozen-frame capture unavailable; requesting native fade out"
-        kill -USR1 $pids 2>/dev/null || true
+        "$BACKGROUND_COMMAND" fade >/dev/null 2>&1 || true
         waited=0
         while [ "$waited" -lt 3 ]; do
             wallpaper_running || return 0

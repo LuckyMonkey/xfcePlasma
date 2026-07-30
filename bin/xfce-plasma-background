@@ -1,0 +1,169 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+  . "$script_dir/../lib/xfce-plasma-sources.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+  . "${XFCE_PLASMA_SOURCES:-$HOME/.local/lib/xfce-plasma/xfce-plasma-sources.sh}"
+fi
+xfce_plasma_export_session_env
+xfce_plasma_mkdirs
+
+BACKGROUND_UNIT=${XFCE_PLASMA_BACKGROUND_UNIT:-tie-dye-wallpaper-mvp.service}
+XWINWRAP=${XFCE_PLASMA_XWINWRAP:-$(command -v xwinwrap 2>/dev/null || true)}
+RENDERER=${XFCE_PLASMA_RENDERER:-$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper}
+SELF=$(readlink -f "$0")
+
+picker_path() {
+  if [ -x "$script_dir/animated-wallpaper-picker" ]; then printf '%s\n' "$script_dir/animated-wallpaper-picker"
+  else printf '%s\n' "$XFCE_PLASMA_BIN_DIR/animated-wallpaper-picker"; fi
+}
+
+write_backend_state() {
+  local state=$1 type=$2 id=$3 backend=$4 pid=${5:-0} window=${6:-} data
+  data=$(printf 'state=%s\ntype=%s\nid=%s\nbackend=%s\nbackend_pid=%s\nwindow_id=%s\nstarted=%s\n' \
+    "$state" "$type" "$id" "$backend" "$pid" "$window" "$(date -Is)")
+  xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATE_FILE" "$data"
+  xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATUS_FILE" "$state"
+}
+
+cleanup_runtime() {
+  rm -f -- "$XFCE_PLASMA_BACKEND_STATE_FILE" "$XFCE_PLASMA_BACKEND_STATUS_FILE" \
+    "$XFCE_PLASMA_RUN_DIR/mpv.sock"
+}
+
+active_source() {
+  xfce_plasma_source_migrate
+  xfce_plasma_source_validate_file "$XFCE_PLASMA_ACTIVE_SOURCE_FILE"
+}
+
+set_transparency() {
+  local value=$1
+  command -v xfconf-query >/dev/null 2>&1 || return 0
+  xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s "$value" >/dev/null 2>&1 || true
+}
+
+run_background() {
+  local type id backend
+  active_source
+  type=$(xfce_plasma_source_active_type)
+  id=$(xfce_plasma_source_active_id)
+  case "$type" in
+    shader) backend=raylib; set_transparency true ;;
+    fallback)
+      set_transparency false
+      write_backend_state running fallback "$id" static "$$" ""
+      exec sleep infinity
+      ;;
+    *) printf 'Source type %s is not implemented by this build\n' "$type" >&2; return 1 ;;
+  esac
+  [ -n "$XWINWRAP" ] && [ -x "$XWINWRAP" ] || { printf 'xwinwrap is unavailable\n' >&2; return 1; }
+  write_backend_state starting "$type" "$id" "$backend" 0 ""
+  exec "$XWINWRAP" -b -s -fs -st -sp -ni -nf -ov -fdt -un -- "$SELF" backend-run WID
+}
+
+backend_run() {
+  local window=$1 type id shader_file picker digits
+  case "$window" in
+    0x*|0X*) digits=${window:2}; case "$digits" in ''|*[!0-9A-Fa-f]*) printf 'Invalid X11 window ID\n' >&2; return 2 ;; esac ;;
+    ''|*[!0-9]*) printf 'Invalid X11 window ID\n' >&2; return 2 ;;
+  esac
+  active_source
+  type=$(xfce_plasma_source_active_type)
+  id=$(xfce_plasma_source_active_id)
+  case "$type" in
+    shader)
+      [ -x "$RENDERER" ] || { printf 'Shader renderer is unavailable: %s\n' "$RENDERER" >&2; return 1; }
+      shader_file=$id.fs
+      picker=$(picker_path)
+      "$picker" set "$shader_file" >/dev/null
+      write_backend_state running shader "$id" raylib "$$" "$window"
+      cd "$XFCE_PLASMA_RENDERER_DIR"
+      exec "$RENDERER" --wid "$window"
+      ;;
+    *) printf 'Unsupported backend source type: %s\n' "$type" >&2; return 1 ;;
+  esac
+}
+
+select_shader() {
+  local requested=$1 id previous_type picker
+  id=$(xfce_plasma_source_canonical_shader_id "$requested")
+  xfce_plasma_source_valid_id "$id" || { printf 'Invalid shader source: %s\n' "$requested" >&2; return 2; }
+  previous_type=$(xfce_plasma_source_active_type 2>/dev/null || printf shader)
+  picker=$(picker_path)
+  "$picker" set "$id.fs"
+  xfce_plasma_source_write_active shader "$id"
+  if systemctl --user is-active --quiet "$BACKGROUND_UNIT"; then
+    [ "$previous_type" = shader ] || systemctl --user restart "$BACKGROUND_UNIT"
+  else
+    systemctl --user start "$BACKGROUND_UNIT"
+  fi
+}
+
+select_fallback() {
+  xfce_plasma_source_write_active fallback static
+  systemctl --user restart "$BACKGROUND_UNIT"
+}
+
+backend_state_value() {
+  local key=$1 fallback=${2:-} value
+  value=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" "$key" 2>/dev/null || true)
+  if [ -n "$value" ]; then printf '%s\n' "$value"; else printf '%s\n' "$fallback"; fi
+}
+
+backend_pid() {
+  backend_state_value backend_pid 0
+}
+
+signal_backend() {
+  local signal=$1 pid cmdline
+  pid=$(backend_pid)
+  case "$pid" in ''|0|*[!0-9]*) return 1 ;; esac
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+  case "$cmdline" in
+    *tie-dye-wallpaper*|*xfce-plasma-renderer*) kill -"$signal" "$pid" ;;
+    *) printf 'Refusing to signal unverified backend PID %s\n' "$pid" >&2; return 1 ;;
+  esac
+}
+
+status_report() {
+  local service type id backend state pid window
+  active_source
+  service=$(systemctl --user is-active "$BACKGROUND_UNIT" 2>/dev/null || true)
+  type=$(xfce_plasma_source_active_type)
+  id=$(xfce_plasma_source_active_id)
+  backend=$(backend_state_value backend unavailable)
+  state=$(cat "$XFCE_PLASMA_BACKEND_STATUS_FILE" 2>/dev/null || printf '%s' "$service")
+  pid=$(backend_state_value backend_pid 0)
+  window=$(backend_state_value window_id '')
+  printf 'service=%s\nsource_type=%s\nsource_id=%s\nbackend=%s\nstate=%s\nbackend_pid=%s\nwindow_id=%s\n' \
+    "$service" "$type" "$id" "$backend" "$state" "$pid" "$window"
+}
+
+case "${1:-status}" in
+  start) active_source; systemctl --user start "$BACKGROUND_UNIT" ;;
+  stop) systemctl --user stop "$BACKGROUND_UNIT"; cleanup_runtime ;;
+  restart) active_source; systemctl --user restart "$BACKGROUND_UNIT" ;;
+  status) status_report ;;
+  pause)
+    systemctl --user kill --kill-whom=all --signal=STOP "$BACKGROUND_UNIT"
+    xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATUS_FILE" paused
+    ;;
+  resume)
+    systemctl --user kill --kill-whom=all --signal=CONT "$BACKGROUND_UNIT"
+    xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATUS_FILE" running
+    ;;
+  reload) systemctl --user reload-or-restart "$BACKGROUND_UNIT" ;;
+  shader) [ "$#" -ge 2 ] || { printf 'shader requires a source ID or filename\n' >&2; exit 2; }; select_shader "$2" ;;
+  fallback) select_fallback ;;
+  fade) signal_backend USR1 ;;
+  migrate) xfce_plasma_source_migrate; cat "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ;;
+  run) run_background ;;
+  backend-run) [ "$#" -eq 2 ] || exit 2; backend_run "$2" ;;
+  cleanup) cleanup_runtime ;;
+  *) printf 'usage: %s {start|stop|restart|status|pause|resume|reload|shader SOURCE|fallback}\n' "${0##*/}" >&2; exit 2 ;;
+esac

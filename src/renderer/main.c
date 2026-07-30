@@ -288,7 +288,7 @@ int main(int argc, char **argv) {
         height = DisplayHeight(d, DefaultScreen(d));
     }
 
-    InitWindow(width, height, "Tie Dye GPU Wallpaper");
+    InitWindow(width, height, "xfcePlasma Background");
 
     if (d) {
         XWindowAttributes a;

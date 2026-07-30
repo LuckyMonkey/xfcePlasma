@@ -6,7 +6,15 @@
 ~/.local/bin/start-transparent-xfdesktop-session
 ```
 
-This starts Picom effects, restarts the tie-dye wallpaper service, sets XFCE desktop icon mode, enables transparent desktop background, and launches the custom transparent `xfdesktop` runtime.
+This starts Picom effects, restarts the selected background session, sets XFCE desktop icon mode, enables transparent desktop background, and launches the custom transparent `xfdesktop` runtime.
+
+Inspect or control the common lifecycle with:
+
+```bash
+xfce-plasma-background status
+xfce-plasma-background restart
+xfce-plasma-background fallback
+```
 
 ## Game Guard Logs
 

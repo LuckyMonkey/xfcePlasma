@@ -20,6 +20,7 @@ THUMBNAIL_DIR=${WALLPAPER_THUMBNAIL_DIR:-$XFCE_PLASMA_DATA_DIR/assets/thumbnails
 FALLBACK_THUMBNAIL=${WALLPAPER_FALLBACK_THUMBNAIL:-$THUMBNAIL_DIR/fallback.png}
 
 ORDER=(
+    plasma.fs
     tie-dye.fs
     motion-halftone.fs
     qr-cube-maze.fs
@@ -35,7 +36,7 @@ ORDER=(
 
 label_for() {
     case "$1" in
-        tie-dye.fs) printf 'Tie Dye';;
+        plasma.fs|tie-dye.fs) printf 'Plasma';;
         motion-halftone.fs) printf 'Motion Halftone';;
         qr-cube-maze.fs) printf 'QR Cube Maze';;
         sky-water-wave.fs) printf 'Sky Water Wave';;
@@ -120,9 +121,19 @@ is_ordered() {
     return 1
 }
 
+canonical_shader_name() {
+    case "${1,,}" in
+        tie-dye|tie-dye.fs|'tie dye')
+            if [ -f "$SHADER_DIR/plasma.fs" ]; then printf 'plasma.fs\n'; else printf 'tie-dye.fs\n'; fi;;
+        plasma|plasma.fs) printf 'plasma.fs\n';;
+        *) printf '%s\n' "$1";;
+    esac
+}
+
 available() {
     local name
     for name in "${ORDER[@]}"; do
+        [ "$name" != tie-dye.fs ] || [ ! -f "$SHADER_DIR/plasma.fs" ] || continue
         shader_path "$name" >/dev/null 2>&1 && printf '%s\n' "$name"
     done
     {
@@ -132,6 +143,7 @@ available() {
         done
         true
     } 2>/dev/null | sort -u | while IFS= read -r name; do
+        [ "$name" != tie-dye.fs ] || [ ! -f "$SHADER_DIR/plasma.fs" ] || continue
         is_ordered "$name" || printf '%s\n' "$name"
     done
 }
@@ -178,12 +190,19 @@ current() {
     local saved active_hash name shader_hash source
     if [ -s "$STATE_FILE" ]; then
         saved=$(cat "$STATE_FILE")
+        saved=$(canonical_shader_name "$saved")
         if shader_path "$saved" >/dev/null 2>&1; then
             printf '%s\n' "$saved"
             return
         fi
     fi
 
+    if [ -f "$SHADER_DIR/plasma.fs" ] &&
+       { cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/plasma.fs" 2>/dev/null ||
+         cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/tie-dye.fs" 2>/dev/null; }; then
+        printf 'plasma.fs\n'
+        return
+    fi
     if cmp -s "$ACTIVE_SHADER" "$SHADER_DIR/tie-dye.fs" 2>/dev/null; then
         printf 'tie-dye.fs\n'
         return
@@ -244,6 +263,7 @@ choose_gui() {
 
 apply_shader() {
     local name=$1 src
+    name=$(canonical_shader_name "$name")
     src=$(shader_path "$name" || true)
     [ -f "$src" ] || { notify "Missing shader: $name"; return 1; }
     xfce_plasma_mkdirs
@@ -264,7 +284,8 @@ user_add() {
 }
 
 create_shader() {
-    local name=$1 template=${2:-tie-dye.fs} source
+    local name=$1 template=${2:-plasma.fs} source
+    template=$(canonical_shader_name "$template")
     valid_shader_name "$name" || { printf 'Use a simple filename ending in .fs\n' >&2; return 1; }
     [ ! -e "$SHADER_DIR/$name" ] && [ ! -e "$USER_SHADER_DIR/$name" ] || {
         printf 'Shader already exists: %s\n' "$name" >&2; return 1
@@ -322,7 +343,7 @@ case "${1:-pick}" in
     source|--source) shift; editable_shader_path "${1:-}"; exit $?;;
     read|--read) shift; read_shader "${1:-}"; exit $?;;
     user-add|--user-add) shift; user_add "${1:-}"; exit $?;;
-    create|--create|duplicate|--duplicate) shift; create_shader "${1:-}" "${2:-tie-dye.fs}"; exit $?;;
+    create|--create|duplicate|--duplicate) shift; create_shader "${1:-}" "${2:-plasma.fs}"; exit $?;;
     replace|--replace) shift; replace_shader "${1:-}" "${2:-}"; exit $?;;
     remove|--remove) shift; remove_shader "${1:-}"; exit $?;;
     pick|--pick) choice=$(choose_gui);;

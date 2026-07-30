@@ -62,7 +62,7 @@ The same operations are available in the unified settings panel. CLI source
 management is also available:
 
 ```bash
-animated-wallpaper-picker create "My Copy.fs" tie-dye.fs
+animated-wallpaper-picker create "My Copy.fs" plasma.fs
 animated-wallpaper-picker read "My Copy.fs"
 animated-wallpaper-picker replace "My Copy.fs" /tmp/edited.fs
 animated-wallpaper-picker remove "My Copy.fs"
@@ -82,8 +82,8 @@ A shader does not need metadata to work. Bundled and user shaders may add an
 optional sidecar next to the GLSL file:
 
 ```text
-shaders/tie-dye.fs
-shaders/tie-dye.meta
+shaders/plasma.fs
+shaders/plasma.meta
 ```
 
 Sidecars use simple `key=value` lines. Recognized fields are `id`,

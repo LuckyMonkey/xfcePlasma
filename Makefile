@@ -71,6 +71,12 @@ check-runtime-deps:
 	check_feature convert "ImageMagick convert" "game-mode raster processing"; \
 	check_feature xdotool "xdotool" "game/fullscreen detection"; \
 	check_feature wmctrl "wmctrl" "floating Whisker helper"; \
+	check_feature mpv "mpv" "local video and RTSP backgrounds"; \
+	check_optional vlc "VLC experimental media backend"; \
+	check_optional glxinfo "OpenGL capability reporting (mesa-utils)"; \
+	if command -v ffmpeg >/dev/null 2>&1 || command -v ffmpegthumbnailer >/dev/null 2>&1; then \
+		printf 'OK       optional: video thumbnail generation tool\n'; \
+	else printf 'OPTIONAL optional: FFmpeg or ffmpegthumbnailer is not installed\n'; fi; \
 	check_optional notify-send "desktop notifications"; \
 	if command -v zenity >/dev/null 2>&1 || command -v rofi >/dev/null 2>&1; then \
 		printf 'OK       optional: graphical shell picker\n'; \

@@ -1,6 +1,6 @@
 # xfcePlasma
 
-xfcePlasma is a shader-driven animated desktop system for XFCE on X11.
+xfcePlasma is a shader-driven animated background system for XFCE on X11.
 
 It combines a native raylib renderer, a GTK 3 settings application, Bash
 controllers, systemd user services, xwinwrap, Picom, and a patched transparent
@@ -27,16 +27,16 @@ for a different target and user prefix.
 GTK settings UI
         |
         v
-Bash controller scripts
+Bash background/source controller
         |
         v
-XDG state, configuration, shader, and metadata files
+validated XDG source state, shader, and metadata files
         |
         v
 systemd user services
         |
         v
-xwinwrap + raylib renderer
+xwinwrap + selected backend (Raylib shaders; media adapters in progress)
         |
         v
 Picom + transparent xfdesktop
@@ -98,6 +98,27 @@ Feature-specific tools:
 - ImageMagick `import` and `convert` for the game-mode raster handoff
 - `xdotool` for fullscreen/game detection
 - `wmctrl` for the floating Whisker helper
+
+Optional media tools:
+
+- mpv for local video and RTSP sources
+- VLC as an alternate experimental backend
+- FFmpeg or ffmpegthumbnailer for explicitly requested thumbnails
+
+RTSP sources are muted and low-latency by default. Credential-bearing URLs are
+kept in protected mode-0600 playlist files rather than source metadata or
+process arguments; doctor output shows only sanitized endpoints. Do not share
+the credentials directory or include it in diagnostic archives.
+
+Shaders install and run without any media backend. Video files are referenced
+in place, loop silently by default, and use mpv's `auto-safe` hardware decoding
+without assuming a GPU vendor or CUDA.
+
+Automatic performance mode is the default. It caches a feature-based profile
+from the active OpenGL renderer and total desktop geometry, then selects Low
+(20 FPS, 0.5 render scale), Balanced (30 FPS, 0.75), or High (60 FPS, 1.0).
+Manual overrides are available with `xfce-plasma-background performance MODE`.
+Only animated background content is scaled; xfdesktop icons stay native size.
 
 Desktop notifications and a Zenity or rofi shell picker are optional. Run:
 
@@ -228,9 +249,18 @@ animated-wallpaper-picker set ricky.fs
 animated-wallpaper-speed up
 animated-wallpaper-speed down
 xfce-plasma-settings shortcuts list
+xfce-plasma-background status
+xfce-plasma-background shader plasma
+xfce-plasma-background video "/path/to/Rain Loop.webm"
 ```
 
-The installed default seed is currently Motion Halftone. Upgrades preserve the
+The common background lifecycle is `start`, `stop`, `restart`, `pause`,
+`resume`, `status`, and `reload`. The historical
+`tie-dye-wallpaper-mvp.service` filename remains as the single generic
+background service for upgrade compatibility; it is no longer tied to one
+shader implementation.
+
+The featured classic source is Plasma. Upgrades preserve the
 user's current selection rather than silently changing it.
 
 Default shortcuts:
@@ -277,7 +307,13 @@ User shaders live under
 reload leaves the previous GPU program running; a bad initial shader falls back
 in memory to a safe built-in gradient.
 
-See `docs/shader-api.md` for the complete contract and examples.
+Old `tie-dye`, `tie-dye.fs`, and `Tie Dye` selections migrate idempotently to
+`plasma` while the old files remain installed as compatibility aliases. Plasma
+describes the classic procedural graphics effect; it does not refer to KDE
+Plasma.
+
+See `docs/shader-api.md` for the complete contract and examples, and
+`docs/source-model.md` for source state and lifecycle details.
 
 ## Game mode
 
@@ -305,7 +341,9 @@ Doctor reports `OK`, `WARNING`, `ERROR`, and `OPTIONAL` states with one
 corrective action for each problem. It checks the X11 session, DISPLAY,
 binaries and versions, shaders, writable XDG paths, services, process counts,
 Picom, transparent xfdesktop, optional game-guard tools, and source/install
-artifact mismatches.
+artifact mismatches. It also reports the active source/backend, sanitized RTSP
+endpoint, credential permissions, OpenGL renderer/version, cached performance
+tier, FPS, and render scale.
 
 ## Troubleshooting
 
@@ -373,6 +411,25 @@ journalctl --user -u SERVICE.service --since "10 minutes ago"
 
 Verify that the user systemd manager has DISPLAY and XAUTHORITY from the current
 session.
+
+### Video or RTSP does not start
+
+Switch back without touching the desktop icon layer:
+
+```bash
+xfce-plasma-background shader plasma
+xfce-plasma-background backend automatic
+```
+
+Check `mpv --version`, the media path, and the background service journal. RTSP
+is contacted only when explicitly activated; no public or saved camera is
+probed automatically. Server timeout/reconnect behavior still depends on the
+camera and FFmpeg protocol implementation.
+
+VLC remains experimental. Version 3.0.20 accepted XID embedding and remained
+muted in the reference-system smoke test, but logged an EGL X11 surface error;
+therefore the project does not claim reliable VLC rendering yet. Automatic
+continues to prefer mpv.
 
 ## Provenance and release status
 

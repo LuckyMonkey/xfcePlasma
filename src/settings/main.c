@@ -12,6 +12,8 @@ typedef struct SettingsApp {
     GtkWidget *message;
     GtkComboBoxText *wallpaper_combo;
     GtkComboBoxText *speed_combo;
+    GtkComboBoxText *performance_combo;
+    GtkComboBoxText *backend_combo;
     GtkFlowBox *gallery;
     GtkFileChooser *shader_chooser;
     GtkWidget *wallpaper_state;
@@ -39,8 +41,12 @@ static const gchar *shortcut_labels[SHORTCUT_COUNT] = {
 };
 
 static void wallpaper_apply(GtkButton *button, gpointer data);
+static void video_add(GtkButton *button, gpointer data);
+static void stream_add(GtkButton *button, gpointer data);
+static void source_remove(GtkButton *button, gpointer data);
 static void gallery_selection_changed(GtkFlowBox *box, gpointer data);
 static void gallery_child_activated(GtkFlowBox *box, GtkFlowBoxChild *child, gpointer data);
+static GtkWidget *page_grid(void);
 
 static gchar *control_path(void) {
     const gchar *configured = g_getenv("XFCE_PLASMA_SETTINGS_COMMAND");
@@ -148,8 +154,8 @@ static void refresh_gallery(SettingsApp *app, const gchar *catalog,
     clear_gallery(app);
     for (guint index = 0; lines[index]; index++) {
         if (!*lines[index]) continue;
-        gchar **fields = g_strsplit(lines[index], "\t", 9);
-        if (g_strv_length(fields) < 9) { g_strfreev(fields); continue; }
+        gchar **fields = g_strsplit(lines[index], "\t", 11);
+        if (g_strv_length(fields) < 11) { g_strfreev(fields); continue; }
         GtkWidget *child = gtk_flow_box_child_new();
         GtkWidget *card = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 14);
         GtkWidget *image = gtk_image_new();
@@ -157,7 +163,7 @@ static void refresh_gallery(SettingsApp *app, const gchar *catalog,
         GtkWidget *title = gtk_label_new(fields[2]);
         GtkWidget *description = gtk_label_new(fields[4]);
         GtkWidget *secondary = gtk_label_new(NULL);
-        gchar *secondary_text = g_strdup_printf("%s  ·  %s", fields[3],
+        gchar *secondary_text = g_strdup_printf("%s  ·  %s  ·  %s", fields[3], fields[9],
             g_strcmp0(fields[7], "local") == 0 ? "LOCAL" : "BUNDLED");
         set_gallery_image(GTK_IMAGE(image), fields[6], 176, 99);
         gtk_label_set_ellipsize(GTK_LABEL(title), PANGO_ELLIPSIZE_END);
@@ -182,7 +188,9 @@ static void refresh_gallery(SettingsApp *app, const gchar *catalog,
         gtk_box_pack_start(GTK_BOX(text), secondary, FALSE, FALSE, 0);
         gtk_box_pack_start(GTK_BOX(card), text, TRUE, TRUE, 0);
         gtk_container_add(GTK_CONTAINER(child), card);
-        g_object_set_data_full(G_OBJECT(child), "shader-name", g_strdup(fields[0]), g_free);
+        g_object_set_data_full(G_OBJECT(child), "source-key", g_strdup(fields[0]), g_free);
+        g_object_set_data_full(G_OBJECT(child), "source-type", g_strdup(fields[9]), g_free);
+        g_object_set_data_full(G_OBJECT(child), "source-reference", g_strdup(fields[10]), g_free);
         g_object_set_data_full(G_OBJECT(child), "shader-display", g_strdup(fields[2]), g_free);
         g_object_set_data_full(G_OBJECT(child), "shader-category", g_strdup(fields[3]), g_free);
         g_object_set_data_full(G_OBJECT(child), "shader-description", g_strdup(fields[4]), g_free);
@@ -208,8 +216,9 @@ static void refresh_gallery(SettingsApp *app, const gchar *catalog,
 static void refresh_wallpapers(SettingsApp *app) {
     gchar *selected = gtk_combo_box_text_get_active_text(app->wallpaper_combo);
     gchar *list = capture_control("wallpaper", "list", NULL, NULL);
-    gchar *catalog = capture_control("wallpaper", "catalog", NULL, NULL);
+    gchar *catalog = capture_control("background", "catalog", NULL, NULL);
     gchar *current = capture_control("wallpaper", "current", NULL, NULL);
+    gchar *current_source = capture_control("background", "current", NULL, NULL);
     gchar **names = g_strsplit(list, "\n", -1);
     gtk_combo_box_text_remove_all(app->wallpaper_combo);
     for (guint index = 0; names[index]; index++) {
@@ -219,13 +228,12 @@ static void refresh_wallpapers(SettingsApp *app) {
     if (!gtk_combo_box_set_active_id(GTK_COMBO_BOX(app->wallpaper_combo), wanted) &&
         !gtk_combo_box_set_active_id(GTK_COMBO_BOX(app->wallpaper_combo), current))
         gtk_combo_box_set_active(GTK_COMBO_BOX(app->wallpaper_combo), 0);
-    gtk_label_set_text(GTK_LABEL(app->wallpaper_state), current);
-    gchar *gallery_wanted = gtk_combo_box_text_get_active_text(app->wallpaper_combo);
-    refresh_gallery(app, catalog, current, gallery_wanted);
-    g_free(gallery_wanted);
+    gtk_label_set_text(GTK_LABEL(app->wallpaper_state), current_source);
+    refresh_gallery(app, catalog, current_source, current_source);
     g_strfreev(names);
     g_free(selected);
     g_free(current);
+    g_free(current_source);
     g_free(catalog);
     g_free(list);
 }
@@ -272,12 +280,39 @@ static void report_action(SettingsApp *app, gboolean succeeded,
 static void wallpaper_apply(GtkButton *button, gpointer data) {
     (void)button;
     SettingsApp *app = data;
-    gchar *name = gtk_combo_box_text_get_active_text(app->wallpaper_combo);
-    if (!name) return;
+    GList *selected = gtk_flow_box_get_selected_children(app->gallery);
+    if (!selected) return;
+    const gchar *key = g_object_get_data(G_OBJECT(selected->data), "source-key");
     gchar *output = NULL, *error = NULL;
-    gboolean ok = run_control("wallpaper", "set", name, NULL, &output, &error);
+    gboolean ok = run_control("background", "use", key, NULL, &output, &error);
+    g_list_free(selected);
     report_action(app, ok, output, error);
-    g_free(name);
+}
+
+static void source_remove(GtkButton *button, gpointer data) {
+    (void)button;
+    SettingsApp *app = data;
+    GList *selected = gtk_flow_box_get_selected_children(app->gallery);
+    if (!selected) return;
+    const gchar *key = g_object_get_data(G_OBJECT(selected->data), "source-key");
+    const gchar *type = g_object_get_data(G_OBJECT(selected->data), "source-type");
+    const gchar *origin = g_object_get_data(G_OBJECT(selected->data), "shader-origin");
+    if (g_strcmp0(origin, "local") != 0 || g_strcmp0(type, "Shader") == 0) {
+        set_message(app, "Only local video and stream entries can be removed here");
+        g_list_free(selected); return;
+    }
+    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->window), GTK_DIALOG_MODAL,
+        GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
+        "Remove this local source entry? The original media file will not be deleted.");
+    gtk_dialog_add_buttons(GTK_DIALOG(dialog), "Cancel", GTK_RESPONSE_CANCEL,
+        "Remove source", GTK_RESPONSE_ACCEPT, NULL);
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        gchar *output = NULL, *error = NULL;
+        gboolean ok = run_control("background", "remove-source", key, NULL, &output, &error);
+        report_action(app, ok, output, error);
+    }
+    gtk_widget_destroy(dialog);
+    g_list_free(selected);
 }
 
 static void gallery_selection_changed(GtkFlowBox *box, gpointer data) {
@@ -286,8 +321,10 @@ static void gallery_selection_changed(GtkFlowBox *box, gpointer data) {
     GList *selected = gtk_flow_box_get_selected_children(box);
     if (selected) {
         GtkFlowBoxChild *child = GTK_FLOW_BOX_CHILD(selected->data);
-        const gchar *name = g_object_get_data(G_OBJECT(child), "shader-name");
-        gtk_combo_box_set_active_id(GTK_COMBO_BOX(app->wallpaper_combo), name);
+        const gchar *type = g_object_get_data(G_OBJECT(child), "source-type");
+        const gchar *reference = g_object_get_data(G_OBJECT(child), "source-reference");
+        if (g_strcmp0(type, "Shader") == 0)
+            gtk_combo_box_set_active_id(GTK_COMBO_BOX(app->wallpaper_combo), reference);
     }
     g_list_free(selected);
 }
@@ -295,8 +332,6 @@ static void gallery_selection_changed(GtkFlowBox *box, gpointer data) {
 static void gallery_child_activated(GtkFlowBox *box, GtkFlowBoxChild *child, gpointer data) {
     SettingsApp *app = data;
     gtk_flow_box_select_child(box, child);
-    const gchar *name = g_object_get_data(G_OBJECT(child), "shader-name");
-    gtk_combo_box_set_active_id(GTK_COMBO_BOX(app->wallpaper_combo), name);
     wallpaper_apply(NULL, app);
 }
 
@@ -304,13 +339,78 @@ static void wallpaper_relative(GtkButton *button, gpointer data) {
     SettingsApp *app = data;
     const gchar *action = g_object_get_data(G_OBJECT(button), "action");
     gchar *output = NULL, *error = NULL;
-    gboolean ok = run_control("wallpaper", action, NULL, NULL, &output, &error);
-    if (ok) {
-        gchar *current = capture_control("wallpaper", "current", NULL, NULL);
-        gtk_combo_box_set_active_id(GTK_COMBO_BOX(app->wallpaper_combo), current);
-        g_free(current);
-    }
+    gboolean ok = run_control("background", action, NULL, NULL, &output, &error);
     report_action(app, ok, output, error);
+}
+
+static void video_add(GtkButton *button, gpointer data) {
+    (void)button;
+    SettingsApp *app = data;
+    GtkWidget *dialog = gtk_file_chooser_dialog_new("Add local video", GTK_WINDOW(app->window),
+        GTK_FILE_CHOOSER_ACTION_OPEN, "Cancel", GTK_RESPONSE_CANCEL,
+        "Add muted video", GTK_RESPONSE_ACCEPT, NULL);
+    GtkFileFilter *common = gtk_file_filter_new();
+    gtk_file_filter_set_name(common, "Common video files");
+    const gchar *patterns[] = {"*.mp4", "*.webm", "*.mkv", "*.mov", "*.avi", "*.m4v", NULL};
+    for (guint index = 0; patterns[index]; index++) gtk_file_filter_add_pattern(common, patterns[index]);
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), common);
+    GtkFileFilter *all = gtk_file_filter_new();
+    gtk_file_filter_set_name(all, "All files (mpv determines codec support)");
+    gtk_file_filter_add_pattern(all, "*");
+    gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(dialog), all);
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        gchar *filename = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dialog));
+        gchar *output = NULL, *error = NULL;
+        gboolean ok = run_control("background", "video", filename, NULL, &output, &error);
+        report_action(app, ok, output, error);
+        g_free(filename);
+    }
+    gtk_widget_destroy(dialog);
+}
+
+static void stream_add(GtkButton *button, gpointer data) {
+    (void)button;
+    SettingsApp *app = data;
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Add RTSP stream", GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL, "Save stream", GTK_RESPONSE_ACCEPT, NULL);
+    GtkWidget *grid = page_grid();
+    GtkWidget *id_entry = gtk_entry_new();
+    GtkWidget *url_entry = gtk_entry_new();
+    GtkWidget *user_entry = gtk_entry_new();
+    GtkWidget *password_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(id_entry), "front-door");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "rtsp://camera.local/stream");
+    gtk_entry_set_visibility(GTK_ENTRY(password_entry), FALSE);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Source ID"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), id_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("RTSP URL"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), url_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Username (optional)"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), user_entry, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Password (optional)"), 0, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), password_entry, 1, 3, 1, 1);
+    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
+    gtk_widget_show_all(dialog);
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        const gchar *id = gtk_entry_get_text(GTK_ENTRY(id_entry));
+        const gchar *url = gtk_entry_get_text(GTK_ENTRY(url_entry));
+        const gchar *user = gtk_entry_get_text(GTK_ENTRY(user_entry));
+        const gchar *password = gtk_entry_get_text(GTK_ENTRY(password_entry));
+        gchar *protected_url = g_strdup(url);
+        if (*user && g_str_has_prefix(url, "rtsp://")) {
+            gchar *escaped_user = g_uri_escape_string(user, NULL, TRUE);
+            gchar *escaped_password = g_uri_escape_string(password, NULL, TRUE);
+            g_free(protected_url);
+            protected_url = g_strdup_printf("rtsp://%s:%s@%s", escaped_user, escaped_password, url + 7);
+            g_free(escaped_password); g_free(escaped_user);
+        }
+        gchar *output = NULL, *error = NULL;
+        gboolean ok = run_control("background", "add-stream", id, protected_url, &output, &error);
+        report_action(app, ok, output, error);
+        if (ok) set_message(app, "Stream saved. Select it in the Collection and choose Use selected to connect.");
+        g_free(protected_url);
+    }
+    gtk_widget_destroy(dialog);
 }
 
 static void wallpaper_import(GtkButton *button, gpointer data) {
@@ -386,14 +486,14 @@ static void create_from_template(SettingsApp *app, const gchar *template_name) {
 
 static void shader_create(GtkButton *button, gpointer data) {
     (void)button;
-    create_from_template(data, "tie-dye.fs");
+    create_from_template(data, "plasma.fs");
 }
 
 static void shader_duplicate(GtkButton *button, gpointer data) {
     (void)button;
     SettingsApp *app = data;
     gchar *template_name = gtk_combo_box_text_get_active_text(app->wallpaper_combo);
-    create_from_template(app, template_name ? template_name : "tie-dye.fs");
+    create_from_template(app, template_name ? template_name : "plasma.fs");
     g_free(template_name);
 }
 
@@ -542,9 +642,9 @@ static GtkWidget *collection_page(SettingsApp *app) {
     for (guint index = 0; presets[index]; index++) gtk_combo_box_text_append_text(app->speed_combo, presets[index]);
     gtk_combo_box_set_active(GTK_COMBO_BOX(app->speed_combo), 2);
 
-    gtk_grid_attach(GTK_GRID(controls), gtk_label_new("Current shader"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(controls), gtk_label_new("Current source"), 0, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), app->wallpaper_state, 1, 0, 2, 1);
-    gtk_grid_attach(GTK_GRID(controls), gtk_label_new("Renderer"), 3, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(controls), gtk_label_new("Background"), 3, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), app->renderer_state, 4, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), gtk_label_new("Desktop icons"), 5, 0, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), app->everyday_desktop_state, 6, 0, 1, 1);
@@ -559,6 +659,11 @@ static GtkWidget *collection_page(SettingsApp *app) {
     gtk_grid_attach(GTK_GRID(controls), action_button("Faster", "speed", "up", app), 4, 2, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), action_button("Freeze", "speed", "freeze", app), 5, 2, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), action_button("Resume", "speed", "restore", app), 6, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(controls), new_button("Add video…", G_CALLBACK(video_add), app), 0, 2, 2, 1);
+    gtk_grid_attach(GTK_GRID(controls), new_button("Add network stream…", G_CALLBACK(stream_add), app), 2, 2, 1, 1);
+    GtkWidget *remove_source_button = new_button("Remove local source", G_CALLBACK(source_remove), app);
+    gtk_style_context_add_class(gtk_widget_get_style_context(remove_source_button), "destructive-action");
+    gtk_grid_attach(GTK_GRID(controls), remove_source_button, 0, 3, 2, 1);
 
     app->gallery = GTK_FLOW_BOX(gtk_flow_box_new());
     gtk_flow_box_set_selection_mode(app->gallery, GTK_SELECTION_SINGLE);
@@ -578,7 +683,7 @@ static GtkWidget *collection_page(SettingsApp *app) {
     gtk_box_pack_start(GTK_BOX(root), warning_banner(), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), section_heading("Everyday controls"), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), controls, FALSE, FALSE, 0);
-    gtk_box_pack_start(GTK_BOX(root), section_heading("Shader collection"), FALSE, FALSE, 0);
+    gtk_box_pack_start(GTK_BOX(root), section_heading("Background collection — shaders featured"), FALSE, FALSE, 0);
     gtk_box_pack_start(GTK_BOX(root), gallery_scroll, TRUE, TRUE, 0);
     return root;
 }
@@ -646,6 +751,43 @@ static GtkWidget *services_page(SettingsApp *app) {
     return grid;
 }
 
+static void advanced_choice_apply(GtkButton *button, gpointer data) {
+    SettingsApp *app = data;
+    const gchar *action = g_object_get_data(G_OBJECT(button), "advanced-action");
+    GtkComboBoxText *combo = g_strcmp0(action, "performance") == 0 ? app->performance_combo : app->backend_combo;
+    gchar *choice = gtk_combo_box_text_get_active_text(combo);
+    gchar *output = NULL, *error = NULL;
+    gboolean ok = run_control("background", action, choice, NULL, &output, &error);
+    report_action(app, ok, output, error);
+    g_free(choice);
+}
+
+static GtkWidget *media_performance_page(SettingsApp *app) {
+    GtkWidget *grid = page_grid();
+    GtkWidget *apply_performance;
+    GtkWidget *apply_backend;
+    app->performance_combo = GTK_COMBO_BOX_TEXT(gtk_combo_box_text_new());
+    app->backend_combo = GTK_COMBO_BOX_TEXT(gtk_combo_box_text_new());
+    const gchar *modes[] = {"automatic", "low", "balanced", "high", NULL};
+    const gchar *backends[] = {"automatic", "mpv", "vlc", NULL};
+    for (guint i = 0; modes[i]; i++) gtk_combo_box_text_append_text(app->performance_combo, modes[i]);
+    for (guint i = 0; backends[i]; i++) gtk_combo_box_text_append_text(app->backend_combo, backends[i]);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->performance_combo), 0);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->backend_combo), 0);
+    apply_performance = new_button("Apply", G_CALLBACK(advanced_choice_apply), app);
+    apply_backend = new_button("Apply", G_CALLBACK(advanced_choice_apply), app);
+    g_object_set_data(G_OBJECT(apply_performance), "advanced-action", (gpointer)"performance");
+    g_object_set_data(G_OBJECT(apply_backend), "advanced-action", (gpointer)"backend");
+    gtk_grid_attach(GTK_GRID(grid), section_heading("Media and performance"), 0, 0, 3, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Performance mode"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), GTK_WIDGET(app->performance_combo), 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_performance, 2, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Video backend"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), GTK_WIDGET(app->backend_combo), 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_backend, 2, 2, 1, 1);
+    return grid;
+}
+
 static GtkWidget *shortcuts_page(SettingsApp *app) {
     GtkWidget *grid = page_grid();
     GtkWidget *intro = gtk_label_new("Click a field, press any valid key combination, then Apply. Conflicting XFCE shortcuts are preserved and reported.");
@@ -688,6 +830,7 @@ static GtkWidget *advanced_page(SettingsApp *app) {
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), shader_editor_page(app), gtk_label_new("Shader Source"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), shortcuts_page(app), gtk_label_new("Shortcuts"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), services_page(app), gtk_label_new("Desktop & Game"));
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), media_performance_page(app), gtk_label_new("Media & Performance"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), diagnostics_page(app), gtk_label_new("Diagnostics"));
     return notebook;
 }

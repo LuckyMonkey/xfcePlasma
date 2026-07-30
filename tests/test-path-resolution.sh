@@ -25,5 +25,9 @@ unset DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS
 [ "$XFCE_PLASMA_RENDERER_DIR" = "$HOME/.local/lib/tie-dye-wallpaper" ]
 [ -z "$XFCE_PLASMA_DISPLAY" ]
 [ "$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR" = "$HOME/.local/state/tie-dye-wallpaper" ]
+[ "$XFCE_PLASMA_SOURCE_DIR" = "$HOME/.config/xfce-plasma/sources" ]
+[ "$XFCE_PLASMA_CREDENTIAL_DIR" = "$HOME/.config/xfce-plasma/credentials" ]
+[ "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" = "$HOME/.local/state/xfce-plasma/active-source" ]
+[ "$XFCE_PLASMA_BACKEND_STATE_FILE" = "/run/user/$(id -u)/xfce-plasma/backend.state" ]
 
 printf 'test-path-resolution ok\n'

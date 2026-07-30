@@ -28,6 +28,13 @@ xfce_plasma_init() {
   XFCE_PLASMA_CACHE_DIR=${XFCE_PLASMA_CACHE_DIR:-$XFCE_PLASMA_XDG_CACHE_HOME/xfce-plasma}
   XFCE_PLASMA_RUN_DIR=${XFCE_PLASMA_RUN_DIR:-$XFCE_PLASMA_XDG_RUNTIME_DIR/xfce-plasma}
   XFCE_PLASMA_LOG_DIR=${XFCE_PLASMA_LOG_DIR:-$XFCE_PLASMA_STATE_DIR/logs}
+  XFCE_PLASMA_SOURCE_DIR=${XFCE_PLASMA_SOURCE_DIR:-$XFCE_PLASMA_CONFIG_DIR/sources}
+  XFCE_PLASMA_CREDENTIAL_DIR=${XFCE_PLASMA_CREDENTIAL_DIR:-$XFCE_PLASMA_CONFIG_DIR/credentials}
+  XFCE_PLASMA_ACTIVE_SOURCE_FILE=${XFCE_PLASMA_ACTIVE_SOURCE_FILE:-$XFCE_PLASMA_STATE_DIR/active-source}
+  XFCE_PLASMA_SETTINGS_FILE=${XFCE_PLASMA_SETTINGS_FILE:-$XFCE_PLASMA_CONFIG_DIR/settings.conf}
+  XFCE_PLASMA_PERFORMANCE_PROFILE_FILE=${XFCE_PLASMA_PERFORMANCE_PROFILE_FILE:-$XFCE_PLASMA_CACHE_DIR/performance-profile}
+  XFCE_PLASMA_BACKEND_STATE_FILE=${XFCE_PLASMA_BACKEND_STATE_FILE:-$XFCE_PLASMA_RUN_DIR/backend.state}
+  XFCE_PLASMA_BACKEND_STATUS_FILE=${XFCE_PLASMA_BACKEND_STATUS_FILE:-$XFCE_PLASMA_RUN_DIR/backend.status}
 
   XFCE_PLASMA_PREFIX=${XFCE_PLASMA_PREFIX:-$HOME/.local}
   XFCE_PLASMA_BIN_DIR=${XFCE_PLASMA_BIN_DIR:-$XFCE_PLASMA_PREFIX/bin}
@@ -87,13 +94,13 @@ xfce_plasma_mkdirs() {
   mkdir -p "$XFCE_PLASMA_CONFIG_DIR" "$XFCE_PLASMA_DATA_DIR" \
     "$XFCE_PLASMA_STATE_DIR" "$XFCE_PLASMA_CACHE_DIR" \
     "$XFCE_PLASMA_RUN_DIR" "$XFCE_PLASMA_LOG_DIR" \
+    "$XFCE_PLASMA_SOURCE_DIR" "$XFCE_PLASMA_CREDENTIAL_DIR" \
     "$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR"
-  chmod 700 "$XFCE_PLASMA_RUN_DIR" 2>/dev/null || true
+  chmod 700 "$XFCE_PLASMA_RUN_DIR" "$XFCE_PLASMA_CREDENTIAL_DIR" 2>/dev/null || true
 }
 
 xfce_plasma_atomic_write() {
-  path=$1
-  data=$2
+  local path=$1 data=$2 dir base tmp
   dir=$(dirname "$path")
   base=$(basename "$path")
   mkdir -p "$dir"
@@ -118,8 +125,7 @@ xfce_plasma_atomic_copy() {
 }
 
 xfce_plasma_config_get() {
-  file=$1
-  key=$2
+  local file=$1 key=$2
   [ -r "$file" ] || return 1
   awk -v want="$key" '
     /^[[:space:]]*($|#)/ { next }

@@ -27,9 +27,13 @@ value to `finalColor`. Keep expensive loops bounded and avoid unnecessary
 texture reads: the renderer normally draws the shader at 30 FPS across the
 combined X11 desktop.
 
-The default cap is 30 FPS. Set `WALLPAPER_FPS` in the renderer service
-environment to an integer from 1 through 240 to override it. A frozen wallpaper
+The default cap is selected by Automatic performance mode. Set `WALLPAPER_FPS`
+in the renderer service environment to an integer from 1 through 240 to override it. A frozen wallpaper
 automatically drops to 5 FPS (or the lower configured cap) after fades finish.
+
+`WALLPAPER_RENDER_SCALE` accepts `0.25` through `1.0`. At scales below 1.0 the
+shader renders to a lower-resolution texture which is then stretched to the
+full background window; xfdesktop and its icons always remain native resolution.
 
 ## Live reload and failure behavior
 

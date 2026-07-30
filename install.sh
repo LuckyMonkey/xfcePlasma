@@ -151,6 +151,7 @@ build_desired_manifest() {
   local file script
   record_desired "$PROJECT_LIB_DIR/xfce-plasma-common.sh"
   record_desired "$PROJECT_LIB_DIR/xfce-plasma-sources.sh"
+  record_desired "$PROJECT_LIB_DIR/xfce-plasma-performance.sh"
   record_desired "$PROJECT_LIB_DIR/xfce-plasma-settings-ui"
   record_desired "$PROJECT_LIB_DIR/VERSION"
   record_desired "$PROJECT_LIB_DIR/install-origin"
@@ -252,6 +253,7 @@ install_config_if_missing() {
 
 install_file "$ROOT/lib/xfce-plasma-common.sh" "$PROJECT_LIB_DIR/xfce-plasma-common.sh" 0644
 install_file "$ROOT/lib/xfce-plasma-sources.sh" "$PROJECT_LIB_DIR/xfce-plasma-sources.sh" 0644
+install_file "$ROOT/lib/xfce-plasma-performance.sh" "$PROJECT_LIB_DIR/xfce-plasma-performance.sh" 0644
 install_file "$settings_ui_source" "$PROJECT_LIB_DIR/xfce-plasma-settings-ui" 0755
 install_file "$ROOT/VERSION" "$PROJECT_LIB_DIR/VERSION" 0644
 printf '%s\n' "$install_origin" > "$work_dir/install-origin"

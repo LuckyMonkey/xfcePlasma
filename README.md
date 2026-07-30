@@ -109,6 +109,12 @@ Shaders install and run without any media backend. Video files are referenced
 in place, loop silently by default, and use mpv's `auto-safe` hardware decoding
 without assuming a GPU vendor or CUDA.
 
+Automatic performance mode is the default. It caches a feature-based profile
+from the active OpenGL renderer and total desktop geometry, then selects Low
+(20 FPS, 0.5 render scale), Balanced (30 FPS, 0.75), or High (60 FPS, 1.0).
+Manual overrides are available with `xfce-plasma-background performance MODE`.
+Only animated background content is scaled; xfdesktop icons stay native size.
+
 Desktop notifications and a Zenity or rofi shell picker are optional. Run:
 
 ```bash

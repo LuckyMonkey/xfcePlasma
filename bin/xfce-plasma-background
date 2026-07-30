@@ -5,9 +5,11 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
   . "$script_dir/../lib/xfce-plasma-common.sh"
   . "$script_dir/../lib/xfce-plasma-sources.sh"
+  . "$script_dir/../lib/xfce-plasma-performance.sh"
 else
   . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
   . "${XFCE_PLASMA_SOURCES:-$HOME/.local/lib/xfce-plasma/xfce-plasma-sources.sh}"
+  . "${XFCE_PLASMA_PERFORMANCE:-$HOME/.local/lib/xfce-plasma/xfce-plasma-performance.sh}"
 fi
 xfce_plasma_export_session_env
 xfce_plasma_mkdirs
@@ -81,6 +83,7 @@ run_background() {
     *) printf 'Source type %s is not implemented by this build\n' "$type" >&2; return 1 ;;
   esac
   [ -n "$XWINWRAP" ] && [ -x "$XWINWRAP" ] || { printf 'xwinwrap is unavailable\n' >&2; return 1; }
+  xfce_plasma_performance_export
   write_backend_state starting "$type" "$id" "$backend" 0 ""
   exec "$XWINWRAP" -b -s -fs -st -sp -ni -nf -ov -fdt -un -- "$SELF" backend-run WID
 }
@@ -307,7 +310,7 @@ signal_backend() {
 }
 
 status_report() {
-  local service type id backend state pid window
+  local service type id backend state pid window mode tier fps scale
   active_source
   service=$(systemctl --user is-active "$BACKGROUND_UNIT" 2>/dev/null || true)
   type=$(xfce_plasma_source_active_type)
@@ -316,8 +319,27 @@ status_report() {
   state=$(cat "$XFCE_PLASMA_BACKEND_STATUS_FILE" 2>/dev/null || printf '%s' "$service")
   pid=$(backend_state_value backend_pid 0)
   window=$(backend_state_value window_id '')
+  mode=$(xfce_plasma_performance_mode)
+  tier=$(xfce_plasma_config_get "$XFCE_PLASMA_PERFORMANCE_PROFILE_FILE" tier 2>/dev/null || printf undetected)
+  fps=$(xfce_plasma_config_get "$XFCE_PLASMA_PERFORMANCE_PROFILE_FILE" fps 2>/dev/null || printf unknown)
+  scale=$(xfce_plasma_config_get "$XFCE_PLASMA_PERFORMANCE_PROFILE_FILE" render_scale 2>/dev/null || printf unknown)
   printf 'service=%s\nsource_type=%s\nsource_id=%s\nbackend=%s\nstate=%s\nbackend_pid=%s\nwindow_id=%s\n' \
     "$service" "$type" "$id" "$backend" "$state" "$pid" "$window"
+  printf 'performance_mode=%s\nperformance_tier=%s\nfps=%s\nrender_scale=%s\n' "$mode" "$tier" "$fps" "$scale"
+}
+
+performance_command() {
+  local action=${1:-status}
+  case "${action,,}" in
+    status) xfce_plasma_performance_detect ;;
+    redetect) xfce_plasma_performance_detect true ;;
+    automatic|low|balanced|high)
+      xfce_plasma_performance_set_mode "$action"
+      xfce_plasma_performance_detect true
+      systemctl --user try-restart "$BACKGROUND_UNIT" >/dev/null 2>&1 || true
+      ;;
+    *) printf 'usage: xfce-plasma-background performance [status|redetect|automatic|low|balanced|high]\n' >&2; return 2 ;;
+  esac
 }
 
 case "${1:-status}" in
@@ -341,6 +363,7 @@ case "${1:-status}" in
   use) [ "$#" -eq 2 ] || exit 2; use_source_key "$2" ;;
   next) select_relative_source next ;;
   prev|previous) select_relative_source previous ;;
+  performance) performance_command "${2:-status}" ;;
   current) current_source_key ;;
   catalog) source_catalog ;;
   detect-backend) select_media_backend "${2:-automatic}" ;;
@@ -350,5 +373,5 @@ case "${1:-status}" in
   run) run_background ;;
   backend-run) [ "$#" -eq 2 ] || exit 2; backend_run "$2" ;;
   cleanup) cleanup_runtime ;;
-  *) printf 'usage: %s {start|stop|restart|status|pause|resume|reload|shader SOURCE|video PATH [ID]|activate ID|fallback}\n' "${0##*/}" >&2; exit 2 ;;
+  *) printf 'usage: %s {start|stop|restart|status|pause|resume|reload|shader SOURCE|video PATH [ID]|activate ID|fallback|performance [MODE]}\n' "${0##*/}" >&2; exit 2 ;;
 esac

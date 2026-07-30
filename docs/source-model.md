@@ -33,3 +33,13 @@ stored under `$XDG_CONFIG_HOME/xfce-plasma/sources`.
 VLC detection and preference validation are present, but actual VLC embedding
 remains experimental until its adapter passes live X11 tests. Missing media
 backends disable media sources without affecting shaders.
+
+## Performance profile
+
+`performance_mode` in `$XDG_CONFIG_HOME/xfce-plasma/settings.conf` accepts
+`automatic`, `low`, `balanced`, or `high`. Automatic is the default. Detection
+uses actual OpenGL renderer/version information and total desktop geometry,
+not a GPU-brand allowlist. The cached profile lives at
+`$XDG_CACHE_HOME/xfce-plasma/performance-profile` and records the selected FPS,
+shader render scale, reason, and hardware fingerprint. Run
+`xfce-plasma-background performance redetect` after a driver or display change.

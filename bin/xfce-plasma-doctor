@@ -29,6 +29,11 @@ if [ -r "$script_dir/../lib/xfce-plasma-sources.sh" ]; then
 else
   . "${XFCE_PLASMA_SOURCES:-$HOME/.local/lib/xfce-plasma/xfce-plasma-sources.sh}"
 fi
+if [ -r "$script_dir/../lib/xfce-plasma-performance.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-performance.sh"
+else
+  . "${XFCE_PLASMA_PERFORMANCE:-$HOME/.local/lib/xfce-plasma/xfce-plasma-performance.sh}"
+fi
 
 errors=0
 warnings=0
@@ -199,6 +204,7 @@ check_command notify-send optional "desktop notifications" "Install libnotify-bi
 check_command mpv feature "mpv video/stream backend" "Install mpv to enable local video and RTSP backgrounds; shaders remain available."
 check_command vlc optional "VLC media backend" "Install VLC only if the experimental alternate media backend is wanted."
 check_command ffmpeg optional "FFmpeg thumbnail/probe tools" "Install FFmpeg only for optional video probing and thumbnail generation."
+check_command glxinfo optional "OpenGL capability reporting" "Install mesa-utils for detailed OpenGL diagnostics and automatic profiling."
 if command -v zenity >/dev/null 2>&1; then ok "optional graphical picker is available through zenity"
 elif command -v rofi >/dev/null 2>&1; then ok "optional graphical picker is available through rofi"
 else optional "neither zenity nor rofi is installed" "Install either tool only if the shell picker UI is wanted."; fi
@@ -236,6 +242,30 @@ else warning "selected shader state is missing" "Select a shader once to create 
 check_writable "configuration path" "$XFCE_PLASMA_CONFIG_DIR" "Fix ownership/permissions for the user XDG configuration directory."
 check_writable "state path" "$XFCE_PLASMA_STATE_DIR" "Fix ownership/permissions for the user XDG state directory."
 check_writable "cache path" "$XFCE_PLASMA_CACHE_DIR" "Fix ownership/permissions for the user XDG cache directory."
+
+printf '\nPerformance profile and OpenGL\n'
+performance_profile=$(xfce_plasma_performance_detect 2>/dev/null || true)
+if [ -n "$performance_profile" ]; then
+  performance_mode=$(xfce_plasma_config_get /dev/stdin mode <<< "$performance_profile")
+  performance_tier=$(xfce_plasma_config_get /dev/stdin tier <<< "$performance_profile")
+  performance_reason=$(xfce_plasma_config_get /dev/stdin reason <<< "$performance_profile")
+  performance_fps=$(xfce_plasma_config_get /dev/stdin fps <<< "$performance_profile")
+  performance_scale=$(xfce_plasma_config_get /dev/stdin render_scale <<< "$performance_profile")
+  performance_renderer=$(xfce_plasma_config_get /dev/stdin renderer <<< "$performance_profile")
+  performance_gl=$(xfce_plasma_config_get /dev/stdin opengl_version <<< "$performance_profile")
+  performance_software=$(xfce_plasma_config_get /dev/stdin software <<< "$performance_profile")
+  ok "performance mode=$performance_mode tier=$performance_tier ($performance_reason)"
+  ok "background quality: fps=$performance_fps render-scale=$performance_scale"
+  if [ "$performance_software" = true ]; then warning "software OpenGL renderer detected: $performance_renderer" "Use Low mode or install/configure the appropriate hardware OpenGL driver."
+  else ok "OpenGL renderer: $performance_renderer"; fi
+  case "$performance_gl" in
+    3.[3-9]*|[4-9].*) ok "OpenGL version supports the normal GLSL 3.30 path: $performance_gl" ;;
+    unknown) warning "OpenGL version could not be detected" "Install mesa-utils and run xfce-plasma-background performance redetect from the X11 session." ;;
+    *) error "OpenGL 3.3 support was not detected: $performance_gl" "Restore an ordinary XFCE wallpaper or configure a driver providing OpenGL 3.3." ;;
+  esac
+else
+  warning "performance profile could not be created" "Run xfce-plasma-background performance redetect in the XFCE X11 session."
+fi
 
 if [ "$active_source_type" = video ]; then
   active_config=$(xfce_plasma_source_active_config 2>/dev/null || true)

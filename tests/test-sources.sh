@@ -38,4 +38,10 @@ printf 'type=shader\nid=ok\nmalicious=$(touch %s)\n' "$tmp/pwned" > "$tmp/malici
 
 [ "$(xfce_plasma_redact_url 'rtsp://alice:secret@camera.local/live')" = 'rtsp://***:***@camera.local/live' ]
 [ "$(xfce_plasma_redact_url 'rtsp://alice@camera.local/live?token=secret')" = 'rtsp://***:***@camera.local/live?token=***' ]
+printf 'type=stream\nid=camera\nurl=rtsp://camera.local/live\nlatency=turbo\n' > "$tmp/bad-latency.source"
+! xfce_plasma_source_validate_file "$tmp/bad-latency.source" >/dev/null 2>&1
+printf 'type=stream\nid=camera\nurl=rtsp://camera.local/live\nnetwork_timeout=0\n' > "$tmp/bad-timeout.source"
+! xfce_plasma_source_validate_file "$tmp/bad-timeout.source" >/dev/null 2>&1
+printf 'type=stream\nid=camera\nurl=rtsp://camera.local/live\ncredential_file=/tmp/leak\n' > "$tmp/bad-credential.source"
+! xfce_plasma_source_validate_file "$tmp/bad-credential.source" >/dev/null 2>&1
 printf 'test-sources ok\n'

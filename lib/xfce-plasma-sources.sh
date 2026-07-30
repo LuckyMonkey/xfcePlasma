@@ -34,7 +34,7 @@ xfce_plasma_source_canonical_shader_id() {
 
 xfce_plasma_source_known_key() {
   case "$1" in
-    type|id|display_name|category|description|author|sort_order|origin|path|url|loop|muted|fit|speed|backend|reconnect|reconnect_delay|latency|thumbnail|credential_file|capabilities)
+    type|id|display_name|category|description|author|sort_order|origin|path|url|loop|muted|fit|speed|backend|reconnect|reconnect_delay|network_timeout|latency|thumbnail|credential_file|capabilities)
       return 0 ;;
     *) return 1 ;;
   esac
@@ -95,6 +95,20 @@ xfce_plasma_source_validate_file() {
       printf 'Playback speed must be between 0.1 and 4.0\n' >&2
       return 1
     }
+  fi
+  value=$(xfce_plasma_source_value "$file" latency)
+  case "$value" in ''|normal|low) ;; *) printf 'Invalid latency mode: %s\n' "$value" >&2; return 1 ;; esac
+  for key in reconnect_delay network_timeout; do
+    value=$(xfce_plasma_source_value "$file" "$key")
+    if [ -n "$value" ]; then
+      case "$value" in ''|*[!0-9]*) printf '%s must be a whole number\n' "$key" >&2; return 1 ;; esac
+      [ "$value" -ge 1 ] && [ "$value" -le 300 ] || { printf '%s must be between 1 and 300\n' "$key" >&2; return 1; }
+    fi
+  done
+  value=$(xfce_plasma_source_value "$file" credential_file)
+  if [ -n "$value" ]; then
+    case "$value" in *'/../'*|*'/./'*) printf 'Credential file path is not normalized\n' >&2; return 1 ;; esac
+    case "$value" in "$XFCE_PLASMA_CREDENTIAL_DIR"/*) ;; *) printf 'Credential file is outside the protected credential directory\n' >&2; return 1 ;; esac
   fi
 }
 

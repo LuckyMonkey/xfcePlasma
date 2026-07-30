@@ -105,6 +105,11 @@ Optional media tools:
 - VLC as an alternate experimental backend
 - FFmpeg or ffmpegthumbnailer for explicitly requested thumbnails
 
+RTSP sources are muted and low-latency by default. Credential-bearing URLs are
+kept in protected mode-0600 playlist files rather than source metadata or
+process arguments; doctor output shows only sanitized endpoints. Do not share
+the credentials directory or include it in diagnostic archives.
+
 Shaders install and run without any media backend. Video files are referenced
 in place, loop silently by default, and use mpv's `auto-safe` hardware decoding
 without assuming a GPU vendor or CUDA.
@@ -336,7 +341,9 @@ Doctor reports `OK`, `WARNING`, `ERROR`, and `OPTIONAL` states with one
 corrective action for each problem. It checks the X11 session, DISPLAY,
 binaries and versions, shaders, writable XDG paths, services, process counts,
 Picom, transparent xfdesktop, optional game-guard tools, and source/install
-artifact mismatches.
+artifact mismatches. It also reports the active source/backend, sanitized RTSP
+endpoint, credential permissions, OpenGL renderer/version, cached performance
+tier, FPS, and render scale.
 
 ## Troubleshooting
 
@@ -404,6 +411,25 @@ journalctl --user -u SERVICE.service --since "10 minutes ago"
 
 Verify that the user systemd manager has DISPLAY and XAUTHORITY from the current
 session.
+
+### Video or RTSP does not start
+
+Switch back without touching the desktop icon layer:
+
+```bash
+xfce-plasma-background shader plasma
+xfce-plasma-background backend automatic
+```
+
+Check `mpv --version`, the media path, and the background service journal. RTSP
+is contacted only when explicitly activated; no public or saved camera is
+probed automatically. Server timeout/reconnect behavior still depends on the
+camera and FFmpeg protocol implementation.
+
+VLC remains experimental. Version 3.0.20 accepted XID embedding and remained
+muted in the reference-system smoke test, but logged an EGL X11 surface error;
+therefore the project does not claim reliable VLC rendering yet. Automatic
+continues to prefer mpv.
 
 ## Provenance and release status
 

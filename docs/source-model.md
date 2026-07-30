@@ -31,8 +31,16 @@ source files remain in their original location; only a small reference file is
 stored under `$XDG_CONFIG_HOME/xfce-plasma/sources`.
 
 VLC detection and preference validation are present, but actual VLC embedding
-remains experimental until its adapter passes live X11 tests. Missing media
-backends disable media sources without affecting shaders.
+uses its `--drawable-xid` adapter and remains experimental until broader live
+X11 testing. Automatic always prefers mpv. Missing media backends disable media
+sources without affecting shaders.
+
+RTSP streams use the same media lifecycle. URLs without credentials are stored
+as normal source metadata. A credential-bearing URL is split: public metadata
+keeps only the host/path, while the original URL is stored as a mode-0600 M3U
+inside the mode-0700 credentials directory. mpv receives only that file path,
+uses quiet logging, stays muted, and never receives the secret URL in argv.
+Connectivity is attempted only by explicit activation or testing.
 
 ## Performance profile
 

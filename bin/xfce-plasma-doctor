@@ -278,6 +278,21 @@ if [ "$active_source_type" = video ]; then
     else error "selected video is missing or unreadable: $video_path" "Reconnect its storage or choose another background source."; fi
     ok "video policy: fit=$video_fit loop=$video_loop muted=$video_muted"
   fi
+elif [ "$active_source_type" = stream ]; then
+  active_config=$(xfce_plasma_source_active_config 2>/dev/null || true)
+  if [ -n "$active_config" ]; then
+    stream_url=$(xfce_plasma_redact_url "$(xfce_plasma_source_value "$active_config" url)")
+    stream_latency=$(xfce_plasma_source_value "$active_config" latency low)
+    stream_reconnect=$(xfce_plasma_source_value "$active_config" reconnect true)
+    stream_timeout=$(xfce_plasma_source_value "$active_config" network_timeout 10)
+    credential_file=$(xfce_plasma_source_value "$active_config" credential_file)
+    ok "stream endpoint: $stream_url"
+    ok "stream policy: latency=$stream_latency reconnect=$stream_reconnect timeout=${stream_timeout}s muted=true"
+    if [ -n "$credential_file" ]; then
+      if [ -r "$credential_file" ] && [ "$(stat -c %a "$credential_file" 2>/dev/null)" = 600 ]; then ok "stream credentials are stored in a protected mode-0600 file"
+      else error "stream credential storage is missing or unsafe" "Re-save the stream credentials; do not place them in source metadata."; fi
+    else optional "stream has no stored credentials"; fi
+  fi
 fi
 
 printf '\nServices and running stack\n'

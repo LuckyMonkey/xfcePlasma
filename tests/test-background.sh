@@ -12,7 +12,7 @@ export WALLPAPER_RUNTIME=$XFCE_PLASMA_RENDERER_DIR
 export XFCE_PLASMA_BACKGROUND_UNIT=test-background.service
 export SYSTEMCTL_LOG=$tmp/systemctl.log XWINWRAP_LOG=$tmp/xwinwrap.log
 export RENDERER_LOG=$tmp/renderer.log XFCONF_LOG=$tmp/xfconf.log
-export MPV_LOG=$tmp/mpv.log
+export MPV_LOG=$tmp/mpv.log VLC_LOG=$tmp/vlc.log
 mock_bin=$tmp/bin
 mkdir -p "$HOME" "$XDG_RUNTIME_DIR" "$mock_bin" "$XFCE_PLASMA_RENDERER_DIR/shaders"
 
@@ -53,6 +53,8 @@ printf '%s\n' "$@" > "$MPV_LOG"
 MOCK
 cat > "$mock_bin/vlc" <<'MOCK'
 #!/usr/bin/env bash
+if [ "${1:-}" = -H ]; then printf '  --drawable-xid <integer>\n'; exit 0; fi
+printf '%s\n' "$@" > "$VLC_LOG"
 exit 0
 MOCK
 chmod 0755 "$mock_bin"/* "$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper"
@@ -124,6 +126,36 @@ if XFCE_PLASMA_MPV=/missing "$background" detect-backend mpv >/dev/null 2>&1; th
 fi
 SYSTEMCTL_ACTIVE=1 XFCE_PLASMA_MPV=/missing XFCE_PLASMA_VLC=/missing "$background" shader plasma >/dev/null
 grep -qx 'type=shader' "$XDG_STATE_HOME/xfce-plasma/active-source"
+
+stream_id=$($background add-stream front-door 'rtsp://alice:secret@camera.local/live?token=private' 'Front Door')
+[ "$stream_id" = front-door ]
+stream_source=$XDG_CONFIG_HOME/xfce-plasma/sources/front-door.source
+credential_file=$XDG_CONFIG_HOME/xfce-plasma/credentials/front-door.m3u
+[ "$(stat -c %a "$credential_file")" = 600 ]
+[ "$(stat -c %a "$(dirname "$credential_file")")" = 700 ]
+grep -Fqx 'url=rtsp://camera.local/live?token=***' "$stream_source"
+! grep -q 'alice\|secret\|private' "$stream_source"
+grep -Fq 'alice:secret' "$credential_file"
+$background use stream:front-door
+$background run
+grep -qx -- '--no-audio' "$MPV_LOG"
+grep -qx -- '--rtsp-transport=tcp' "$MPV_LOG"
+grep -qx -- '--network-timeout=10' "$MPV_LOG"
+grep -qx -- '--profile=low-latency' "$MPV_LOG"
+grep -Fqx -- "--playlist=$credential_file" "$MPV_LOG"
+! grep -q 'alice\|secret\|private' "$MPV_LOG"
+$background shader plasma >/dev/null
+$background remove-source stream:front-door >/dev/null
+[ ! -e "$stream_source" ]
+[ ! -e "$credential_file" ]
+
+sed -i 's/backend=automatic/backend=vlc/' "$source_file"
+printf 'type=video\nid=touch-pwned\n' > "$XDG_STATE_HOME/xfce-plasma/active-source"
+$background run
+grep -qx -- '--drawable-xid=0x123abc' "$VLC_LOG"
+grep -qx -- '--no-audio' "$VLC_LOG"
+grep -Fqx -- "$video" "$VLC_LOG"
+[ -e "$video" ]
 
 if rg -n 'pkill|killall|pkill -f' "$repo_root/bin/xfce-plasma-background" "$repo_root/bin/stop-animated-wallpaper"; then
   printf 'background lifecycle contains broad process killing\n' >&2

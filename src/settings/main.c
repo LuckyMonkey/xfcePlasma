@@ -12,6 +12,8 @@ typedef struct SettingsApp {
     GtkWidget *message;
     GtkComboBoxText *wallpaper_combo;
     GtkComboBoxText *speed_combo;
+    GtkComboBoxText *performance_combo;
+    GtkComboBoxText *backend_combo;
     GtkFlowBox *gallery;
     GtkFileChooser *shader_chooser;
     GtkWidget *wallpaper_state;
@@ -40,8 +42,11 @@ static const gchar *shortcut_labels[SHORTCUT_COUNT] = {
 
 static void wallpaper_apply(GtkButton *button, gpointer data);
 static void video_add(GtkButton *button, gpointer data);
+static void stream_add(GtkButton *button, gpointer data);
+static void source_remove(GtkButton *button, gpointer data);
 static void gallery_selection_changed(GtkFlowBox *box, gpointer data);
 static void gallery_child_activated(GtkFlowBox *box, GtkFlowBoxChild *child, gpointer data);
+static GtkWidget *page_grid(void);
 
 static gchar *control_path(void) {
     const gchar *configured = g_getenv("XFCE_PLASMA_SETTINGS_COMMAND");
@@ -284,6 +289,32 @@ static void wallpaper_apply(GtkButton *button, gpointer data) {
     report_action(app, ok, output, error);
 }
 
+static void source_remove(GtkButton *button, gpointer data) {
+    (void)button;
+    SettingsApp *app = data;
+    GList *selected = gtk_flow_box_get_selected_children(app->gallery);
+    if (!selected) return;
+    const gchar *key = g_object_get_data(G_OBJECT(selected->data), "source-key");
+    const gchar *type = g_object_get_data(G_OBJECT(selected->data), "source-type");
+    const gchar *origin = g_object_get_data(G_OBJECT(selected->data), "shader-origin");
+    if (g_strcmp0(origin, "local") != 0 || g_strcmp0(type, "Shader") == 0) {
+        set_message(app, "Only local video and stream entries can be removed here");
+        g_list_free(selected); return;
+    }
+    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->window), GTK_DIALOG_MODAL,
+        GTK_MESSAGE_WARNING, GTK_BUTTONS_NONE,
+        "Remove this local source entry? The original media file will not be deleted.");
+    gtk_dialog_add_buttons(GTK_DIALOG(dialog), "Cancel", GTK_RESPONSE_CANCEL,
+        "Remove source", GTK_RESPONSE_ACCEPT, NULL);
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        gchar *output = NULL, *error = NULL;
+        gboolean ok = run_control("background", "remove-source", key, NULL, &output, &error);
+        report_action(app, ok, output, error);
+    }
+    gtk_widget_destroy(dialog);
+    g_list_free(selected);
+}
+
 static void gallery_selection_changed(GtkFlowBox *box, gpointer data) {
     SettingsApp *app = data;
     if (app->refreshing_gallery) return;
@@ -333,6 +364,51 @@ static void video_add(GtkButton *button, gpointer data) {
         gboolean ok = run_control("background", "video", filename, NULL, &output, &error);
         report_action(app, ok, output, error);
         g_free(filename);
+    }
+    gtk_widget_destroy(dialog);
+}
+
+static void stream_add(GtkButton *button, gpointer data) {
+    (void)button;
+    SettingsApp *app = data;
+    GtkWidget *dialog = gtk_dialog_new_with_buttons("Add RTSP stream", GTK_WINDOW(app->window),
+        GTK_DIALOG_MODAL, "Cancel", GTK_RESPONSE_CANCEL, "Save stream", GTK_RESPONSE_ACCEPT, NULL);
+    GtkWidget *grid = page_grid();
+    GtkWidget *id_entry = gtk_entry_new();
+    GtkWidget *url_entry = gtk_entry_new();
+    GtkWidget *user_entry = gtk_entry_new();
+    GtkWidget *password_entry = gtk_entry_new();
+    gtk_entry_set_placeholder_text(GTK_ENTRY(id_entry), "front-door");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(url_entry), "rtsp://camera.local/stream");
+    gtk_entry_set_visibility(GTK_ENTRY(password_entry), FALSE);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Source ID"), 0, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), id_entry, 1, 0, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("RTSP URL"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), url_entry, 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Username (optional)"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), user_entry, 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Password (optional)"), 0, 3, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), password_entry, 1, 3, 1, 1);
+    gtk_container_add(GTK_CONTAINER(gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
+    gtk_widget_show_all(dialog);
+    if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_ACCEPT) {
+        const gchar *id = gtk_entry_get_text(GTK_ENTRY(id_entry));
+        const gchar *url = gtk_entry_get_text(GTK_ENTRY(url_entry));
+        const gchar *user = gtk_entry_get_text(GTK_ENTRY(user_entry));
+        const gchar *password = gtk_entry_get_text(GTK_ENTRY(password_entry));
+        gchar *protected_url = g_strdup(url);
+        if (*user && g_str_has_prefix(url, "rtsp://")) {
+            gchar *escaped_user = g_uri_escape_string(user, NULL, TRUE);
+            gchar *escaped_password = g_uri_escape_string(password, NULL, TRUE);
+            g_free(protected_url);
+            protected_url = g_strdup_printf("rtsp://%s:%s@%s", escaped_user, escaped_password, url + 7);
+            g_free(escaped_password); g_free(escaped_user);
+        }
+        gchar *output = NULL, *error = NULL;
+        gboolean ok = run_control("background", "add-stream", id, protected_url, &output, &error);
+        report_action(app, ok, output, error);
+        if (ok) set_message(app, "Stream saved. Select it in the Collection and choose Use selected to connect.");
+        g_free(protected_url);
     }
     gtk_widget_destroy(dialog);
 }
@@ -584,6 +660,10 @@ static GtkWidget *collection_page(SettingsApp *app) {
     gtk_grid_attach(GTK_GRID(controls), action_button("Freeze", "speed", "freeze", app), 5, 2, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), action_button("Resume", "speed", "restore", app), 6, 2, 1, 1);
     gtk_grid_attach(GTK_GRID(controls), new_button("Add video…", G_CALLBACK(video_add), app), 0, 2, 2, 1);
+    gtk_grid_attach(GTK_GRID(controls), new_button("Add network stream…", G_CALLBACK(stream_add), app), 2, 2, 1, 1);
+    GtkWidget *remove_source_button = new_button("Remove local source", G_CALLBACK(source_remove), app);
+    gtk_style_context_add_class(gtk_widget_get_style_context(remove_source_button), "destructive-action");
+    gtk_grid_attach(GTK_GRID(controls), remove_source_button, 0, 3, 2, 1);
 
     app->gallery = GTK_FLOW_BOX(gtk_flow_box_new());
     gtk_flow_box_set_selection_mode(app->gallery, GTK_SELECTION_SINGLE);
@@ -671,6 +751,43 @@ static GtkWidget *services_page(SettingsApp *app) {
     return grid;
 }
 
+static void advanced_choice_apply(GtkButton *button, gpointer data) {
+    SettingsApp *app = data;
+    const gchar *action = g_object_get_data(G_OBJECT(button), "advanced-action");
+    GtkComboBoxText *combo = g_strcmp0(action, "performance") == 0 ? app->performance_combo : app->backend_combo;
+    gchar *choice = gtk_combo_box_text_get_active_text(combo);
+    gchar *output = NULL, *error = NULL;
+    gboolean ok = run_control("background", action, choice, NULL, &output, &error);
+    report_action(app, ok, output, error);
+    g_free(choice);
+}
+
+static GtkWidget *media_performance_page(SettingsApp *app) {
+    GtkWidget *grid = page_grid();
+    GtkWidget *apply_performance;
+    GtkWidget *apply_backend;
+    app->performance_combo = GTK_COMBO_BOX_TEXT(gtk_combo_box_text_new());
+    app->backend_combo = GTK_COMBO_BOX_TEXT(gtk_combo_box_text_new());
+    const gchar *modes[] = {"automatic", "low", "balanced", "high", NULL};
+    const gchar *backends[] = {"automatic", "mpv", "vlc", NULL};
+    for (guint i = 0; modes[i]; i++) gtk_combo_box_text_append_text(app->performance_combo, modes[i]);
+    for (guint i = 0; backends[i]; i++) gtk_combo_box_text_append_text(app->backend_combo, backends[i]);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->performance_combo), 0);
+    gtk_combo_box_set_active(GTK_COMBO_BOX(app->backend_combo), 0);
+    apply_performance = new_button("Apply", G_CALLBACK(advanced_choice_apply), app);
+    apply_backend = new_button("Apply", G_CALLBACK(advanced_choice_apply), app);
+    g_object_set_data(G_OBJECT(apply_performance), "advanced-action", (gpointer)"performance");
+    g_object_set_data(G_OBJECT(apply_backend), "advanced-action", (gpointer)"backend");
+    gtk_grid_attach(GTK_GRID(grid), section_heading("Media and performance"), 0, 0, 3, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Performance mode"), 0, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), GTK_WIDGET(app->performance_combo), 1, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_performance, 2, 1, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), gtk_label_new("Video backend"), 0, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), GTK_WIDGET(app->backend_combo), 1, 2, 1, 1);
+    gtk_grid_attach(GTK_GRID(grid), apply_backend, 2, 2, 1, 1);
+    return grid;
+}
+
 static GtkWidget *shortcuts_page(SettingsApp *app) {
     GtkWidget *grid = page_grid();
     GtkWidget *intro = gtk_label_new("Click a field, press any valid key combination, then Apply. Conflicting XFCE shortcuts are preserved and reported.");
@@ -713,6 +830,7 @@ static GtkWidget *advanced_page(SettingsApp *app) {
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), shader_editor_page(app), gtk_label_new("Shader Source"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), shortcuts_page(app), gtk_label_new("Shortcuts"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), services_page(app), gtk_label_new("Desktop & Game"));
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), media_performance_page(app), gtk_label_new("Media & Performance"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), diagnostics_page(app), gtk_label_new("Diagnostics"));
     return notebook;
 }

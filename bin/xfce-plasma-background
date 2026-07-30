@@ -55,6 +55,18 @@ set_transparency() {
   xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s "$value" >/dev/null 2>&1 || true
 }
 
+restart_background_stack() {
+  xfce_plasma_restart_desktop_stack "$BACKGROUND_UNIT" xfdesktop-transparent.service
+}
+
+start_background_stack() {
+  if systemctl --user is-active --quiet xfdesktop-transparent.service; then
+    restart_background_stack
+  else
+    systemctl --user start "$BACKGROUND_UNIT"
+  fi
+}
+
 run_background() {
   local type id backend config path requested_backend
   active_source
@@ -309,7 +321,7 @@ select_stream() {
   select_media_backend automatic >/dev/null
   add_stream "$id" "$url" "$name" >/dev/null
   xfce_plasma_source_write_active stream "$id"
-  systemctl --user restart "$BACKGROUND_UNIT"
+  restart_background_stack
   printf '%s\n' "$id"
 }
 
@@ -318,7 +330,7 @@ select_video() {
   select_media_backend automatic >/dev/null
   id=$(add_video "$path" "$requested_id")
   xfce_plasma_source_write_active video "$id"
-  systemctl --user restart "$BACKGROUND_UNIT"
+  restart_background_stack
   printf '%s\n' "$id"
 }
 
@@ -328,7 +340,7 @@ activate_source() {
   xfce_plasma_source_validate_file "$definition"
   type=$(xfce_plasma_source_value "$definition" type)
   xfce_plasma_source_write_active "$type" "$id"
-  systemctl --user restart "$BACKGROUND_UNIT"
+  restart_background_stack
 }
 
 remove_source() {
@@ -424,15 +436,15 @@ select_shader() {
   "$picker" set "$id.fs"
   xfce_plasma_source_write_active shader "$id"
   if systemctl --user is-active --quiet "$BACKGROUND_UNIT"; then
-    [ "$previous_type" = shader ] || systemctl --user restart "$BACKGROUND_UNIT"
+    [ "$previous_type" = shader ] || restart_background_stack
   else
-    systemctl --user start "$BACKGROUND_UNIT"
+    start_background_stack
   fi
 }
 
 select_fallback() {
   xfce_plasma_source_write_active fallback static
-  systemctl --user restart "$BACKGROUND_UNIT"
+  restart_background_stack
 }
 
 backend_state_value() {
@@ -484,16 +496,16 @@ performance_command() {
     automatic|low|balanced|high)
       xfce_plasma_performance_set_mode "$action"
       xfce_plasma_performance_detect true
-      systemctl --user try-restart "$BACKGROUND_UNIT" >/dev/null 2>&1 || true
+      if systemctl --user is-active --quiet "$BACKGROUND_UNIT"; then restart_background_stack; fi
       ;;
     *) printf 'usage: xfce-plasma-background performance [status|redetect|automatic|low|balanced|high]\n' >&2; return 2 ;;
   esac
 }
 
 case "${1:-status}" in
-  start) active_source; systemctl --user start "$BACKGROUND_UNIT" ;;
+  start) active_source; start_background_stack ;;
   stop) systemctl --user stop "$BACKGROUND_UNIT"; cleanup_runtime ;;
-  restart) active_source; systemctl --user restart "$BACKGROUND_UNIT" ;;
+  restart) active_source; restart_background_stack ;;
   status) status_report ;;
   pause)
     systemctl --user kill --kill-whom=all --signal=STOP "$BACKGROUND_UNIT"
@@ -503,7 +515,7 @@ case "${1:-status}" in
     systemctl --user kill --kill-whom=all --signal=CONT "$BACKGROUND_UNIT"
     xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATUS_FILE" running
     ;;
-  reload) systemctl --user reload-or-restart "$BACKGROUND_UNIT" ;;
+  reload) restart_background_stack ;;
   shader) [ "$#" -ge 2 ] || { printf 'shader requires a source ID or filename\n' >&2; exit 2; }; select_shader "$2" ;;
   video) [ "$#" -ge 2 ] || { printf 'video requires a local file path\n' >&2; exit 2; }; select_video "$2" "${3:-}" ;;
   add-video) [ "$#" -ge 3 ] || { printf 'add-video requires an ID and local file path\n' >&2; exit 2; }; add_video "$3" "$2" ;;

@@ -9,9 +9,6 @@ StartLimitBurst=3
 Type=simple
 Environment=__GL_YIELD=USLEEP
 ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 %h/.local/bin/xfce-plasma-background run
-ExecStartPost=%h/.local/bin/xfce-plasma-restack-icons
 ExecStopPost=%h/.local/bin/xfce-plasma-background cleanup
 KillMode=control-group
 TimeoutStopSec=5
-Restart=on-failure
-RestartSec=2

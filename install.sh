@@ -74,7 +74,6 @@ BIN_SCRIPTS=(
   xfce-plasma-doctor
   xfce-plasma-settings
   xfce-plasma-background
-  xfce-plasma-restack-icons
   start-animated-wallpaper-with-xfdesktop-icons
   start-transparent-xfdesktop-session
   run-custom-xfdesktop

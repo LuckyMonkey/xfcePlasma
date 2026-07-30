@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Keep xfdesktop's transparent icon window above a newly mapped background.
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+fi
+xfce_plasma_export_session_env
+
+command -v wmctrl >/dev/null 2>&1 || exit 0
+command -v xdotool >/dev/null 2>&1 || exit 0
+
+for _attempt in {1..30}; do
+  background_window=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" window_id 2>/dev/null || true)
+  desktop_window=$(wmctrl -l -x 2>/dev/null | awk 'tolower($3) ~ /xfdesktop\.xfdesktop/ { print $1; exit }')
+  if [ -n "$background_window" ] && [ -n "$desktop_window" ] && \
+      xdotool getwindowname "$background_window" >/dev/null 2>&1; then
+    xdotool windowraise "$desktop_window" >/dev/null 2>&1 || true
+    exit 0
+  fi
+  sleep 0.1
+done
+
+# A missing xfdesktop window is valid while restoring an ordinary desktop.
+exit 0

@@ -20,6 +20,7 @@ HOME="$test_home" PATH="$test_bin:$PATH" "$repo_root/install.sh" --user --no-ena
 [ -x "$test_home/.local/bin/xfce-plasma-doctor" ]
 [ -x "$test_home/.local/bin/xfce-plasma-settings" ]
 [ -x "$test_home/.local/bin/xfce-plasma-background" ]
+[ -x "$test_home/.local/bin/xfce-plasma-restack-icons" ]
 [ -f "$test_home/.local/lib/xfce-plasma/xfce-plasma-sources.sh" ]
 [ -x "$test_home/.local/lib/xfce-plasma/xfce-plasma-settings-ui" ]
 [ -f "$test_home/.local/share/applications/xfce-plasma-settings.desktop" ]

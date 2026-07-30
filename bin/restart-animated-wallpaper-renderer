@@ -9,4 +9,5 @@ else
 fi
 xfce_plasma_export_session_env
 xfce_plasma_mkdirs
-xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$XFCE_PLASMA_LOG_DIR/tie-dye-wallpaper.log" 2>&1
+systemctl --user reset-failed tie-dye-wallpaper-mvp.service >/dev/null 2>&1 || true
+systemctl --user restart tie-dye-wallpaper-mvp.service >"$XFCE_PLASMA_LOG_DIR/tie-dye-wallpaper.log" 2>&1

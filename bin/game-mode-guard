@@ -12,11 +12,9 @@ LOG=${LOG:-$STATE_ROOT/logs/game-mode-guard.log}
 RESTORE_LOG=${RESTORE_LOG:-$STATE_ROOT/logs/game-mode-desktop-restore.log}
 WALLPAPER_UNIT=${WALLPAPER_UNIT:-tie-dye-wallpaper-mvp.service}
 BACKGROUND_COMMAND=${BACKGROUND_COMMAND:-$HOME/.local/bin/xfce-plasma-background}
-STACK_RESTART_HELPER=${STACK_RESTART_HELPER:-$HOME/.local/bin/restart-animated-wallpaper-renderer}
 RASTER_HELPER=${RASTER_HELPER:-$HOME/.local/bin/game-mode-raster-wallpaper}
 PICOM_HELPER=${PICOM_HELPER:-$HOME/.local/bin/start-picom-effects}
 WALLPAPER_CHECK_SECONDS=${WALLPAPER_CHECK_SECONDS:-8}
-IDLE_REPAIR_SECONDS=${IDLE_REPAIR_SECONDS:-30}
 FULLSCREEN_MIN_WIDTH=${FULLSCREEN_MIN_WIDTH:-1200}
 FULLSCREEN_MIN_HEIGHT=${FULLSCREEN_MIN_HEIGHT:-700}
 GAME_MODE_STATE_DIR=${GAME_MODE_STATE_DIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/xfce-plasma/game-mode}
@@ -114,9 +112,8 @@ ensure_wallpaper() {
     local reason=$1
     log "ensuring animated wallpaper ($reason)"
     wallpaper_running && return 0
-    if [ -x "$STACK_RESTART_HELPER" ]; then "$STACK_RESTART_HELPER" >> "$RESTORE_LOG" 2>&1 || true
-    else systemctl --user reset-failed "$WALLPAPER_UNIT" >/dev/null 2>&1 || true; systemctl --user restart "$WALLPAPER_UNIT" >> "$RESTORE_LOG" 2>&1 || true
-    fi
+    systemctl --user reset-failed "$WALLPAPER_UNIT" >/dev/null 2>&1 || true
+    systemctl --user start "$WALLPAPER_UNIT" >> "$RESTORE_LOG" 2>&1 || true
     wait_for_wallpaper
 }
 
@@ -157,7 +154,6 @@ restore_desktop() {
 }
 
 in_game_mode=false
-last_idle_repair=0
 clear_game_mode_state
 trap 'clear_game_mode_state; exit 0' HUP INT TERM
 log "game-mode guard started"
@@ -166,9 +162,6 @@ while :; do
         if [ "$in_game_mode" = false ] && enter_game_mode; then in_game_mode=true; fi
     elif [ "$in_game_mode" = true ]; then
         if restore_desktop; then in_game_mode=false; fi
-    elif ! wallpaper_running; then
-        now=$(date +%s)
-        if [ $((now - last_idle_repair)) -ge "$IDLE_REPAIR_SECONDS" ]; then last_idle_repair=$now; ensure_wallpaper "idle repair" || true; fi
     fi
     sleep "$POLL_SECONDS"
 done

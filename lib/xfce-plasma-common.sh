@@ -22,14 +22,25 @@ xfce_plasma_init() {
 
   XFCE_PLASMA_CONFIG_DIR=${XFCE_PLASMA_CONFIG_DIR:-$XFCE_PLASMA_XDG_CONFIG_HOME/xfce-plasma}
   XFCE_PLASMA_DATA_DIR=${XFCE_PLASMA_DATA_DIR:-$XFCE_PLASMA_XDG_DATA_HOME/xfce-plasma}
+  XFCE_PLASMA_ASSET_DIR=${XFCE_PLASMA_ASSET_DIR:-$XFCE_PLASMA_DATA_DIR/assets}
+  XFCE_PLASMA_THUMBNAIL_DIR=${XFCE_PLASMA_THUMBNAIL_DIR:-$XFCE_PLASMA_ASSET_DIR/thumbnails}
   XFCE_PLASMA_STATE_DIR=${XFCE_PLASMA_STATE_DIR:-$XFCE_PLASMA_XDG_STATE_HOME/xfce-plasma}
   XFCE_PLASMA_CACHE_DIR=${XFCE_PLASMA_CACHE_DIR:-$XFCE_PLASMA_XDG_CACHE_HOME/xfce-plasma}
   XFCE_PLASMA_RUN_DIR=${XFCE_PLASMA_RUN_DIR:-$XFCE_PLASMA_XDG_RUNTIME_DIR/xfce-plasma}
   XFCE_PLASMA_LOG_DIR=${XFCE_PLASMA_LOG_DIR:-$XFCE_PLASMA_STATE_DIR/logs}
+  XFCE_PLASMA_SOURCE_DIR=${XFCE_PLASMA_SOURCE_DIR:-$XFCE_PLASMA_CONFIG_DIR/sources}
+  XFCE_PLASMA_CREDENTIAL_DIR=${XFCE_PLASMA_CREDENTIAL_DIR:-$XFCE_PLASMA_CONFIG_DIR/credentials}
+  XFCE_PLASMA_ACTIVE_SOURCE_FILE=${XFCE_PLASMA_ACTIVE_SOURCE_FILE:-$XFCE_PLASMA_STATE_DIR/active-source}
+  XFCE_PLASMA_SETTINGS_FILE=${XFCE_PLASMA_SETTINGS_FILE:-$XFCE_PLASMA_CONFIG_DIR/settings.conf}
+  XFCE_PLASMA_PERFORMANCE_PROFILE_FILE=${XFCE_PLASMA_PERFORMANCE_PROFILE_FILE:-$XFCE_PLASMA_CACHE_DIR/performance-profile}
+  XFCE_PLASMA_BACKEND_STATE_FILE=${XFCE_PLASMA_BACKEND_STATE_FILE:-$XFCE_PLASMA_RUN_DIR/backend.state}
+  XFCE_PLASMA_BACKEND_STATUS_FILE=${XFCE_PLASMA_BACKEND_STATUS_FILE:-$XFCE_PLASMA_RUN_DIR/backend.status}
 
   XFCE_PLASMA_PREFIX=${XFCE_PLASMA_PREFIX:-$HOME/.local}
   XFCE_PLASMA_BIN_DIR=${XFCE_PLASMA_BIN_DIR:-$XFCE_PLASMA_PREFIX/bin}
   XFCE_PLASMA_LIB_DIR=${XFCE_PLASMA_LIB_DIR:-$XFCE_PLASMA_PREFIX/lib/xfce-plasma}
+  XFCE_PLASMA_VERSION_FILE=${XFCE_PLASMA_VERSION_FILE:-$XFCE_PLASMA_LIB_DIR/VERSION}
+  XFCE_PLASMA_INSTALL_ORIGIN_FILE=${XFCE_PLASMA_INSTALL_ORIGIN_FILE:-$XFCE_PLASMA_LIB_DIR/install-origin}
   XFCE_PLASMA_XFDESKTOP_DIR=${XFCE_PLASMA_XFDESKTOP_DIR:-$XFCE_PLASMA_PREFIX/opt/xfdesktop-transparent}
   XFCE_PLASMA_RENDERER_DIR=${XFCE_PLASMA_RENDERER_DIR:-$XFCE_PLASMA_PREFIX/lib/tie-dye-wallpaper}
   XFCE_PLASMA_SHADER_DIR=${XFCE_PLASMA_SHADER_DIR:-$XFCE_PLASMA_DATA_DIR/shaders}
@@ -42,6 +53,32 @@ xfce_plasma_init() {
   XFCE_PLASMA_DISPLAY=${DISPLAY:-}
   XFCE_PLASMA_XAUTHORITY=${XAUTHORITY:-$HOME/.Xauthority}
   XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XFCE_PLASMA_XDG_RUNTIME_DIR/bus}
+}
+
+xfce_plasma_project_version() {
+  local library_dir source_version
+  if [ -r "$XFCE_PLASMA_VERSION_FILE" ]; then
+    sed -n '1p' "$XFCE_PLASMA_VERSION_FILE"
+    return 0
+  fi
+  library_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  for source_version in "$library_dir/VERSION" "$library_dir/../VERSION"; do
+    if [ -r "$source_version" ]; then
+      sed -n '1p' "$source_version"
+      return 0
+    fi
+  done
+  printf 'unknown\n'
+}
+
+xfce_plasma_install_origin() {
+  if [ -r "$XFCE_PLASMA_INSTALL_ORIGIN_FILE" ]; then
+    sed -n '1p' "$XFCE_PLASMA_INSTALL_ORIGIN_FILE"
+  elif [ -x "$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper" ]; then
+    printf 'legacy-or-unknown\n'
+  else
+    printf 'not-installed\n'
+  fi
 }
 
 xfce_plasma_export_session_env() {
@@ -57,13 +94,13 @@ xfce_plasma_mkdirs() {
   mkdir -p "$XFCE_PLASMA_CONFIG_DIR" "$XFCE_PLASMA_DATA_DIR" \
     "$XFCE_PLASMA_STATE_DIR" "$XFCE_PLASMA_CACHE_DIR" \
     "$XFCE_PLASMA_RUN_DIR" "$XFCE_PLASMA_LOG_DIR" \
+    "$XFCE_PLASMA_SOURCE_DIR" "$XFCE_PLASMA_CREDENTIAL_DIR" \
     "$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR"
-  chmod 700 "$XFCE_PLASMA_RUN_DIR" 2>/dev/null || true
+  chmod 700 "$XFCE_PLASMA_RUN_DIR" "$XFCE_PLASMA_CREDENTIAL_DIR" 2>/dev/null || true
 }
 
 xfce_plasma_atomic_write() {
-  path=$1
-  data=$2
+  local path=$1 data=$2 dir base tmp
   dir=$(dirname "$path")
   base=$(basename "$path")
   mkdir -p "$dir"
@@ -88,8 +125,7 @@ xfce_plasma_atomic_copy() {
 }
 
 xfce_plasma_config_get() {
-  file=$1
-  key=$2
+  local file=$1 key=$2
   [ -r "$file" ] || return 1
   awk -v want="$key" '
     /^[[:space:]]*($|#)/ { next }

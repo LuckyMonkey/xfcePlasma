@@ -1,0 +1,541 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-common.sh"
+  . "$script_dir/../lib/xfce-plasma-sources.sh"
+  . "$script_dir/../lib/xfce-plasma-performance.sh"
+else
+  . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
+  . "${XFCE_PLASMA_SOURCES:-$HOME/.local/lib/xfce-plasma/xfce-plasma-sources.sh}"
+  . "${XFCE_PLASMA_PERFORMANCE:-$HOME/.local/lib/xfce-plasma/xfce-plasma-performance.sh}"
+fi
+xfce_plasma_export_session_env
+xfce_plasma_mkdirs
+
+BACKGROUND_UNIT=${XFCE_PLASMA_BACKGROUND_UNIT:-tie-dye-wallpaper-mvp.service}
+XWINWRAP=${XFCE_PLASMA_XWINWRAP:-$(command -v xwinwrap 2>/dev/null || true)}
+RENDERER=${XFCE_PLASMA_RENDERER:-$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper}
+MPV=${XFCE_PLASMA_MPV:-$(command -v mpv 2>/dev/null || true)}
+VLC=${XFCE_PLASMA_VLC:-$(command -v cvlc 2>/dev/null || command -v vlc 2>/dev/null || true)}
+SELF=$(readlink -f "$0")
+
+picker_path() {
+  if [ -x "$script_dir/animated-wallpaper-picker" ]; then printf '%s\n' "$script_dir/animated-wallpaper-picker"
+  else printf '%s\n' "$XFCE_PLASMA_BIN_DIR/animated-wallpaper-picker"; fi
+}
+
+write_backend_state() {
+  local state=$1 type=$2 id=$3 backend=$4 pid=${5:-0} window=${6:-} data
+  data=$(printf 'state=%s\ntype=%s\nid=%s\nbackend=%s\nbackend_pid=%s\nwindow_id=%s\nstarted=%s\n' \
+    "$state" "$type" "$id" "$backend" "$pid" "$window" "$(date -Is)")
+  xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATE_FILE" "$data"
+  xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATUS_FILE" "$state"
+}
+
+cleanup_runtime() {
+  rm -f -- "$XFCE_PLASMA_BACKEND_STATE_FILE" "$XFCE_PLASMA_BACKEND_STATUS_FILE" \
+    "$XFCE_PLASMA_RUN_DIR/mpv.sock"
+}
+
+active_source() {
+  xfce_plasma_source_migrate
+  xfce_plasma_source_validate_selector "$XFCE_PLASMA_ACTIVE_SOURCE_FILE"
+  xfce_plasma_source_active_config >/dev/null
+}
+
+active_config() {
+  xfce_plasma_source_active_config
+}
+
+set_transparency() {
+  local value=$1
+  command -v xfconf-query >/dev/null 2>&1 || return 0
+  xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s "$value" >/dev/null 2>&1 || true
+}
+
+restart_background_stack() {
+  xfce_plasma_restart_desktop_stack "$BACKGROUND_UNIT" xfdesktop-transparent.service
+}
+
+start_background_stack() {
+  if systemctl --user is-active --quiet xfdesktop-transparent.service; then
+    restart_background_stack
+  else
+    systemctl --user start "$BACKGROUND_UNIT"
+  fi
+}
+
+run_background() {
+  local type id backend config path requested_backend
+  active_source
+  type=$(xfce_plasma_source_active_type)
+  id=$(xfce_plasma_source_active_id)
+  config=$(active_config)
+  case "$type" in
+    shader) backend=raylib; set_transparency true ;;
+    video|stream)
+      if [ "$type" = video ]; then
+      path=$(xfce_plasma_source_value "$config" path)
+      if [ ! -f "$path" ] || [ ! -r "$path" ]; then
+        set_transparency false
+        write_backend_state error video "$id" unavailable 0 ""
+        printf 'Video source is missing or unreadable: %s\n' "$path" >&2
+        return 1
+      fi
+      else
+        path=$(xfce_plasma_source_value "$config" credential_file)
+        if [ -n "$path" ] && { [ ! -r "$path" ] || [ "$(stat -c %a "$path" 2>/dev/null)" != 600 ]; }; then
+          set_transparency false
+          write_backend_state error stream "$id" unavailable 0 ""
+          printf 'Protected stream credential file is missing or unsafe\n' >&2
+          return 1
+        fi
+      fi
+      requested_backend=$(xfce_plasma_source_value "$config" backend automatic)
+      backend=$(select_media_backend "$requested_backend") || { set_transparency false; return 1; }
+      set_transparency true
+      ;;
+    fallback)
+      set_transparency false
+      write_backend_state running fallback "$id" static "$$" ""
+      exec sleep infinity
+      ;;
+    *) printf 'Source type %s is not implemented by this build\n' "$type" >&2; return 1 ;;
+  esac
+  [ -n "$XWINWRAP" ] && [ -x "$XWINWRAP" ] || { printf 'xwinwrap is unavailable\n' >&2; return 1; }
+  xfce_plasma_performance_export
+  write_backend_state starting "$type" "$id" "$backend" 0 ""
+  exec "$XWINWRAP" -b -s -fs -st -sp -ni -nf -ov -fdt -un -- "$SELF" backend-run WID
+}
+
+backend_run() {
+  local window=$1 type id shader_file picker digits config backend path loop muted fit speed
+  local url latency timeout credential_file reconnect_delay
+  local -a player
+  case "$window" in
+    0x*|0X*) digits=${window:2}; case "$digits" in ''|*[!0-9A-Fa-f]*) printf 'Invalid X11 window ID\n' >&2; return 2 ;; esac ;;
+    ''|*[!0-9]*) printf 'Invalid X11 window ID\n' >&2; return 2 ;;
+  esac
+  active_source
+  type=$(xfce_plasma_source_active_type)
+  id=$(xfce_plasma_source_active_id)
+  config=$(active_config)
+  case "$type" in
+    shader)
+      [ -x "$RENDERER" ] || { printf 'Shader renderer is unavailable: %s\n' "$RENDERER" >&2; return 1; }
+      shader_file=$id.fs
+      picker=$(picker_path)
+      "$picker" set "$shader_file" >/dev/null
+      write_backend_state running shader "$id" raylib "$$" "$window"
+      cd "$XFCE_PLASMA_RENDERER_DIR"
+      exec "$RENDERER" --wid "$window"
+      ;;
+    video)
+      backend=$(select_media_backend "$(xfce_plasma_source_value "$config" backend automatic)")
+      path=$(xfce_plasma_source_value "$config" path)
+      [ -f "$path" ] && [ -r "$path" ] || { printf 'Video source is missing or unreadable: %s\n' "$path" >&2; return 1; }
+      loop=$(xfce_plasma_source_value "$config" loop true)
+      muted=$(xfce_plasma_source_value "$config" muted true)
+      fit=$(xfce_plasma_source_value "$config" fit cover)
+      speed=$(xfce_plasma_source_value "$config" speed 1.0)
+      if [ "$backend" = mpv ]; then
+        player=("$MPV" "--wid=$window" --no-osc --no-osd-bar --no-input-default-bindings
+          --no-input-cursor --no-border --keep-open=yes --hwdec=auto-safe
+          --stop-screensaver=no "--input-ipc-server=$XFCE_PLASMA_RUN_DIR/mpv.sock"
+          "--speed=$speed")
+        if [ "$loop" = true ]; then player+=(--loop-file=inf); else player+=(--loop-file=no); fi
+        if [ "$muted" = true ]; then player+=(--no-audio); else player+=(--audio=auto); fi
+        append_fit_args "$fit" player
+        player+=(-- "$path")
+      else
+        player=("$VLC" --intf dummy --no-video-title-show --no-osd "--drawable-xid=$window" "--rate=$speed")
+        if [ "$loop" = true ]; then player+=(--loop); fi
+        if [ "$muted" = true ]; then player+=(--no-audio); fi
+        player+=(-- "$path")
+      fi
+      write_backend_state running video "$id" "$backend" "$$" "$window"
+      exec "${player[@]}"
+      ;;
+    stream)
+      backend=$(select_media_backend "$(xfce_plasma_source_value "$config" backend automatic)")
+      url=$(xfce_plasma_source_value "$config" url)
+      muted=$(xfce_plasma_source_value "$config" muted true)
+      fit=$(xfce_plasma_source_value "$config" fit cover)
+      latency=$(xfce_plasma_source_value "$config" latency low)
+      timeout=$(xfce_plasma_source_value "$config" network_timeout 10)
+      reconnect_delay=$(xfce_plasma_source_value "$config" reconnect_delay 5)
+      credential_file=$(xfce_plasma_source_value "$config" credential_file)
+      if [ -n "$credential_file" ]; then
+        [ -r "$credential_file" ] && [ "$(stat -c %a "$credential_file" 2>/dev/null)" = 600 ] || {
+          printf 'Protected stream credential file is missing or has unsafe permissions\n' >&2; return 1;
+        }
+      fi
+      if [ "$backend" = mpv ]; then
+        player=("$MPV" "--wid=$window" --no-osc --no-osd-bar --no-input-default-bindings
+          --no-input-cursor --no-border --keep-open=yes --hwdec=auto-safe --no-audio
+          --stop-screensaver=no "--input-ipc-server=$XFCE_PLASMA_RUN_DIR/mpv.sock"
+          "--network-timeout=$timeout" --rtsp-transport=tcp
+          "--stream-lavf-o=reconnect=1,reconnect_streamed=1,reconnect_delay_max=$reconnect_delay")
+        [ "$latency" != low ] || player+=(--profile=low-latency --cache=no)
+        append_fit_args "$fit" player
+        if [ -n "$credential_file" ]; then
+          player+=(--really-quiet "--playlist=$credential_file")
+        else
+          player+=(-- "$url")
+        fi
+      else
+        player=("$VLC" --intf dummy --quiet --no-video-title-show --no-osd --no-audio
+          "--drawable-xid=$window" "--network-caching=$((timeout * 1000))")
+        if [ -n "$credential_file" ]; then player+=(-- "$credential_file"); else player+=(-- "$url"); fi
+      fi
+      write_backend_state running stream "$id" "$backend" "$$" "$window"
+      exec "${player[@]}"
+      ;;
+    *) printf 'Unsupported backend source type: %s\n' "$type" >&2; return 1 ;;
+  esac
+}
+
+select_media_backend() {
+  local requested=${1:-automatic} preference
+  case "$requested" in
+    automatic)
+      preference=$(xfce_plasma_config_get "$XFCE_PLASMA_SETTINGS_FILE" media_backend 2>/dev/null || printf automatic)
+      case "$preference" in mpv|vlc) select_media_backend "$preference"; return ;; esac
+      if [ -n "$MPV" ] && [ -x "$MPV" ]; then printf 'mpv\n'
+      elif vlc_can_embed; then printf 'vlc\n'
+      else printf 'No supported media backend is installed; install mpv for video backgrounds.\n' >&2; return 1
+      fi
+      ;;
+    mpv) [ -n "$MPV" ] && [ -x "$MPV" ] || { printf 'The selected mpv backend is unavailable.\n' >&2; return 1; }; printf 'mpv\n' ;;
+    vlc) vlc_can_embed || { printf 'The selected VLC backend cannot embed into an X11 window.\n' >&2; return 1; }; printf 'vlc\n' ;;
+    *) printf 'Unknown media backend: %s\n' "$requested" >&2; return 2 ;;
+  esac
+}
+
+media_backend_command() {
+  local choice=${1:-status} old_data= data
+  if [ "$choice" = status ]; then
+    xfce_plasma_config_get "$XFCE_PLASMA_SETTINGS_FILE" media_backend 2>/dev/null || printf 'automatic\n'
+    return
+  fi
+  case "$choice" in automatic|mpv|vlc) ;; *) printf 'Video backend must be automatic, mpv, or vlc.\n' >&2; return 2 ;; esac
+  [ "$choice" = automatic ] || select_media_backend "$choice" >/dev/null
+  if [ -r "$XFCE_PLASMA_SETTINGS_FILE" ]; then old_data=$(awk -F= '$1 != "media_backend" { print }' "$XFCE_PLASMA_SETTINGS_FILE"); fi
+  data=${old_data:+$old_data$'\n'}media_backend=$choice
+  xfce_plasma_atomic_write "$XFCE_PLASMA_SETTINGS_FILE" "$data"
+  printf '%s\n' "$choice"
+}
+
+vlc_can_embed() {
+  [ -n "$VLC" ] && [ -x "$VLC" ] || return 1
+  "$VLC" -H 2>/dev/null | grep -q -- '--drawable-xid'
+}
+
+append_fit_args() {
+  local fit=$1 array_name=$2
+  local -n arguments=$array_name
+  case "$fit" in
+    cover) arguments+=(--keepaspect=yes --panscan=1.0) ;;
+    contain) arguments+=(--keepaspect=yes --panscan=0) ;;
+    stretch) arguments+=(--keepaspect=no --panscan=0) ;;
+  esac
+}
+
+unique_source_id() {
+  local base=$1 candidate=$1 suffix=2
+  while [ -e "$XFCE_PLASMA_SOURCE_DIR/$candidate.source" ]; do
+    candidate=$base-$suffix
+    suffix=$((suffix + 1))
+  done
+  printf '%s\n' "$candidate"
+}
+
+add_video() {
+  local requested=$1 requested_id=${2:-} path name id data
+  path=$(realpath -e -- "$requested" 2>/dev/null) || { printf 'Video file not found: %s\n' "$requested" >&2; return 1; }
+  [ -f "$path" ] && [ -r "$path" ] || { printf 'Video file is unreadable: %s\n' "$path" >&2; return 1; }
+  name=$(basename "$path")
+  name=${name%.*}
+  if [ -n "$requested_id" ]; then
+    id=$requested_id
+    xfce_plasma_source_valid_id "$id" || { printf 'Invalid source ID: %s\n' "$id" >&2; return 2; }
+    [ ! -e "$XFCE_PLASMA_SOURCE_DIR/$id.source" ] || { printf 'Source already exists: %s\n' "$id" >&2; return 1; }
+  else
+    id=$(unique_source_id "$(xfce_plasma_source_slug "$name")")
+  fi
+  data=$(printf 'type=video\nid=%s\ndisplay_name=%s\ncategory=Video\ndescription=Local looping video.\norigin=local\npath=%s\nloop=true\nmuted=true\nfit=cover\nspeed=1.0\nbackend=automatic\ncapabilities=supports-loop,supports-audio,supports-fit,supports-pause\n' \
+    "$id" "$name" "$path")
+  xfce_plasma_source_write_definition "$id" "$data" >/dev/null
+  printf '%s\n' "$id"
+}
+
+prepare_stream_url() {
+  local raw=$1 id=$2 rest authority suffix userinfo host credential_data sensitive=false
+  STREAM_PUBLIC_URL=$raw
+  STREAM_CREDENTIAL_FILE=
+  rest=${raw#rtsp://}
+  authority=${rest%%/*}
+  [ "$authority" != "$rest" ] && suffix=/${rest#*/} || suffix=
+  case "$authority" in
+    *@*)
+      userinfo=${authority%@*}
+      host=${authority##*@}
+      [ -n "$userinfo" ] && [ -n "$host" ] || { printf 'Invalid RTSP credentials or host\n' >&2; return 1; }
+      STREAM_PUBLIC_URL=rtsp://$host$suffix
+      sensitive=true
+      ;;
+  esac
+  case "${raw,,}" in *'?token='*|*'&token='*|*'?key='*|*'&key='*|*'?password='*|*'&password='*) sensitive=true ;; esac
+  if [ "$sensitive" = true ]; then
+    STREAM_PUBLIC_URL=$(xfce_plasma_redact_url "$STREAM_PUBLIC_URL")
+    STREAM_CREDENTIAL_FILE=$XFCE_PLASMA_CREDENTIAL_DIR/$id.m3u
+    credential_data=$(printf '#EXTM3U\n%s\n' "$raw")
+    xfce_plasma_atomic_write "$STREAM_CREDENTIAL_FILE" "$credential_data"
+    chmod 0600 "$STREAM_CREDENTIAL_FILE"
+  fi
+}
+
+add_stream() {
+  local requested_id=$1 raw_url=$2 requested_name=${3:-} id name data
+  id=$requested_id
+  xfce_plasma_source_valid_id "$id" || { printf 'Invalid source ID: %s\n' "$id" >&2; return 2; }
+  [ ! -e "$XFCE_PLASMA_SOURCE_DIR/$id.source" ] || { printf 'Source already exists: %s\n' "$id" >&2; return 1; }
+  case "$raw_url" in rtsp://*) ;; *) printf 'Stream URL must use rtsp://\n' >&2; return 2 ;; esac
+  case "$raw_url" in *[[:space:]]*|*[[:cntrl:]]*) printf 'Stream URL contains invalid whitespace\n' >&2; return 2 ;; esac
+  name=${requested_name:-$id}
+  case "$name" in *[[:cntrl:]]*) printf 'Stream display name contains control characters\n' >&2; return 2 ;; esac
+  prepare_stream_url "$raw_url" "$id"
+  data=$(printf 'type=stream\nid=%s\ndisplay_name=%s\ncategory=Stream\ndescription=Saved RTSP network stream.\norigin=local\nurl=%s\nmuted=true\nfit=cover\nbackend=automatic\nreconnect=true\nreconnect_delay=5\nnetwork_timeout=10\nlatency=low\ncredential_file=%s\ncapabilities=supports-fit,supports-pause,supports-low-latency\n' \
+    "$id" "$name" "$STREAM_PUBLIC_URL" "$STREAM_CREDENTIAL_FILE")
+  if ! xfce_plasma_source_write_definition "$id" "$data" >/dev/null; then
+    [ -z "$STREAM_CREDENTIAL_FILE" ] || rm -f -- "$STREAM_CREDENTIAL_FILE"
+    return 1
+  fi
+  printf '%s\n' "$id"
+}
+
+select_stream() {
+  local id=$1 url=$2 name=${3:-}
+  select_media_backend automatic >/dev/null
+  add_stream "$id" "$url" "$name" >/dev/null
+  xfce_plasma_source_write_active stream "$id"
+  restart_background_stack
+  printf '%s\n' "$id"
+}
+
+select_video() {
+  local path=$1 requested_id=${2:-} id
+  select_media_backend automatic >/dev/null
+  id=$(add_video "$path" "$requested_id")
+  xfce_plasma_source_write_active video "$id"
+  restart_background_stack
+  printf '%s\n' "$id"
+}
+
+activate_source() {
+  local id=$1 definition type
+  definition=$(xfce_plasma_source_definition_file "$id")
+  xfce_plasma_source_validate_file "$definition"
+  type=$(xfce_plasma_source_value "$definition" type)
+  xfce_plasma_source_write_active "$type" "$id"
+  restart_background_stack
+}
+
+remove_source() {
+  local key=$1 type=${1%%:*} id=${1#*:} definition credential current
+  [ "$key" != "$id" ] || { printf 'Source key must include its type\n' >&2; return 2; }
+  case "$type" in video|stream) ;; *) printf 'Only local video or stream sources can be removed here\n' >&2; return 2 ;; esac
+  current=$(current_source_key)
+  [ "$current" != "$key" ] || { printf 'Select another background before removing the active source\n' >&2; return 1; }
+  definition=$(xfce_plasma_source_definition_file "$id")
+  xfce_plasma_source_validate_file "$definition"
+  [ "$(xfce_plasma_source_value "$definition" type)" = "$type" ] || return 1
+  credential=$(xfce_plasma_source_value "$definition" credential_file)
+  rm -f -- "$definition"
+  [ -z "$credential" ] || rm -f -- "$credential"
+  printf 'Removed local %s source metadata: %s\n' "$type" "$id"
+}
+
+clean_catalog_field() {
+  printf '%s' "$1" | tr '\t\r\n' '   '
+}
+
+source_catalog() {
+  local picker line id file type display category description author thumbnail origin order key
+  picker=$(picker_path)
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    IFS=$'\t' read -r file id display category description author thumbnail origin order <<< "$line"
+    key=shader:$id
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\tShader\t%s\n' \
+      "$key" "$id" "$display" "$category" "$description" "$author" "$thumbnail" "$origin" "$order" "$file"
+  done < <("$picker" catalog)
+
+  for file in "$XFCE_PLASMA_SOURCE_DIR"/*.source; do
+    [ -e "$file" ] || continue
+    xfce_plasma_source_validate_file "$file" >/dev/null 2>&1 || continue
+    type=$(xfce_plasma_source_value "$file" type)
+    case "$type" in video|stream) ;; *) continue ;; esac
+    id=$(xfce_plasma_source_value "$file" id)
+    display=$(xfce_plasma_source_value "$file" display_name "$id")
+    category=$(xfce_plasma_source_value "$file" category "${type^}")
+    description=$(xfce_plasma_source_value "$file" description "Local ${type} source.")
+    author=$(xfce_plasma_source_value "$file" author User)
+    thumbnail=$(xfce_plasma_source_value "$file" thumbnail "$XFCE_PLASMA_THUMBNAIL_DIR/fallback.png")
+    [ -r "$thumbnail" ] || thumbnail=$XFCE_PLASMA_THUMBNAIL_DIR/fallback.png
+    origin=$(xfce_plasma_source_value "$file" origin local)
+    order=$(xfce_plasma_source_value "$file" sort_order 5000)
+    case "$order" in ''|*[!0-9]*) order=5000 ;; esac
+    key=$type:$id
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$(clean_catalog_field "$key")" "$(clean_catalog_field "$id")" \
+      "$(clean_catalog_field "$display")" "$(clean_catalog_field "$category")" \
+      "$(clean_catalog_field "$description")" "$(clean_catalog_field "$author")" \
+      "$(clean_catalog_field "$thumbnail")" "$(clean_catalog_field "$origin")" "$order" \
+      "${type^}" "$id"
+  done
+}
+
+current_source_key() {
+  active_source
+  printf '%s:%s\n' "$(xfce_plasma_source_active_type)" "$(xfce_plasma_source_active_id)"
+}
+
+use_source_key() {
+  local key=$1 type=${1%%:*} id=${1#*:}
+  [ "$key" != "$id" ] || { printf 'Source key must include its type\n' >&2; return 2; }
+  case "$type" in
+    shader) select_shader "$id" ;;
+    video|stream) activate_source "$id" ;;
+    fallback) select_fallback ;;
+    *) printf 'Unknown source type: %s\n' "$type" >&2; return 2 ;;
+  esac
+}
+
+select_relative_source() {
+  local direction=$1 current index=0 count position
+  local -a keys=()
+  current=$(current_source_key)
+  mapfile -t keys < <(source_catalog | cut -f1)
+  count=${#keys[@]}
+  [ "$count" -gt 0 ] || return 1
+  for position in "${!keys[@]}"; do [ "${keys[$position]}" = "$current" ] && index=$position; done
+  if [ "$direction" = next ]; then index=$(((index + 1) % count))
+  else index=$((index - 1)); [ "$index" -ge 0 ] || index=$((count - 1)); fi
+  use_source_key "${keys[$index]}"
+}
+
+select_shader() {
+  local requested=$1 id previous_type picker
+  id=$(xfce_plasma_source_canonical_shader_id "$requested")
+  xfce_plasma_source_valid_id "$id" || { printf 'Invalid shader source: %s\n' "$requested" >&2; return 2; }
+  previous_type=$(xfce_plasma_source_active_type 2>/dev/null || printf shader)
+  picker=$(picker_path)
+  "$picker" set "$id.fs"
+  xfce_plasma_source_write_active shader "$id"
+  if systemctl --user is-active --quiet "$BACKGROUND_UNIT"; then
+    [ "$previous_type" = shader ] || restart_background_stack
+  else
+    start_background_stack
+  fi
+}
+
+select_fallback() {
+  xfce_plasma_source_write_active fallback static
+  restart_background_stack
+}
+
+backend_state_value() {
+  local key=$1 fallback=${2:-} value
+  value=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" "$key" 2>/dev/null || true)
+  if [ -n "$value" ]; then printf '%s\n' "$value"; else printf '%s\n' "$fallback"; fi
+}
+
+backend_pid() {
+  backend_state_value backend_pid 0
+}
+
+signal_backend() {
+  local signal=$1 pid cmdline
+  pid=$(backend_pid)
+  case "$pid" in ''|0|*[!0-9]*) return 1 ;; esac
+  [ -r "/proc/$pid/cmdline" ] || return 1
+  cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline")
+  case "$cmdline" in
+    *tie-dye-wallpaper*|*xfce-plasma-renderer*) kill -"$signal" "$pid" ;;
+    *) printf 'Refusing to signal unverified backend PID %s\n' "$pid" >&2; return 1 ;;
+  esac
+}
+
+status_report() {
+  local service type id backend state pid window mode tier fps scale
+  active_source
+  service=$(systemctl --user is-active "$BACKGROUND_UNIT" 2>/dev/null || true)
+  type=$(xfce_plasma_source_active_type)
+  id=$(xfce_plasma_source_active_id)
+  backend=$(backend_state_value backend unavailable)
+  state=$(cat "$XFCE_PLASMA_BACKEND_STATUS_FILE" 2>/dev/null || printf '%s' "$service")
+  pid=$(backend_state_value backend_pid 0)
+  window=$(backend_state_value window_id '')
+  mode=$(xfce_plasma_performance_mode)
+  tier=$(xfce_plasma_config_get "$XFCE_PLASMA_PERFORMANCE_PROFILE_FILE" tier 2>/dev/null || printf undetected)
+  fps=$(xfce_plasma_config_get "$XFCE_PLASMA_PERFORMANCE_PROFILE_FILE" fps 2>/dev/null || printf unknown)
+  scale=$(xfce_plasma_config_get "$XFCE_PLASMA_PERFORMANCE_PROFILE_FILE" render_scale 2>/dev/null || printf unknown)
+  printf 'service=%s\nsource_type=%s\nsource_id=%s\nbackend=%s\nstate=%s\nbackend_pid=%s\nwindow_id=%s\n' \
+    "$service" "$type" "$id" "$backend" "$state" "$pid" "$window"
+  printf 'performance_mode=%s\nperformance_tier=%s\nfps=%s\nrender_scale=%s\n' "$mode" "$tier" "$fps" "$scale"
+}
+
+performance_command() {
+  local action=${1:-status}
+  case "${action,,}" in
+    status) xfce_plasma_performance_detect ;;
+    redetect) xfce_plasma_performance_detect true ;;
+    automatic|low|balanced|high)
+      xfce_plasma_performance_set_mode "$action"
+      xfce_plasma_performance_detect true
+      if systemctl --user is-active --quiet "$BACKGROUND_UNIT"; then restart_background_stack; fi
+      ;;
+    *) printf 'usage: xfce-plasma-background performance [status|redetect|automatic|low|balanced|high]\n' >&2; return 2 ;;
+  esac
+}
+
+case "${1:-status}" in
+  start) active_source; start_background_stack ;;
+  stop) systemctl --user stop "$BACKGROUND_UNIT"; cleanup_runtime ;;
+  restart) active_source; restart_background_stack ;;
+  status) status_report ;;
+  pause)
+    systemctl --user kill --kill-whom=all --signal=STOP "$BACKGROUND_UNIT"
+    xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATUS_FILE" paused
+    ;;
+  resume)
+    systemctl --user kill --kill-whom=all --signal=CONT "$BACKGROUND_UNIT"
+    xfce_plasma_atomic_write "$XFCE_PLASMA_BACKEND_STATUS_FILE" running
+    ;;
+  reload) restart_background_stack ;;
+  shader) [ "$#" -ge 2 ] || { printf 'shader requires a source ID or filename\n' >&2; exit 2; }; select_shader "$2" ;;
+  video) [ "$#" -ge 2 ] || { printf 'video requires a local file path\n' >&2; exit 2; }; select_video "$2" "${3:-}" ;;
+  add-video) [ "$#" -ge 3 ] || { printf 'add-video requires an ID and local file path\n' >&2; exit 2; }; add_video "$3" "$2" ;;
+  stream) [ "$#" -ge 3 ] || { printf 'stream requires an ID and RTSP URL\n' >&2; exit 2; }; select_stream "$2" "$3" "${4:-}" ;;
+  add-stream) [ "$#" -ge 3 ] || { printf 'add-stream requires an ID and RTSP URL\n' >&2; exit 2; }; add_stream "$2" "$3" "${4:-}" ;;
+  activate) [ "$#" -eq 2 ] || exit 2; activate_source "$2" ;;
+  remove-source) [ "$#" -eq 2 ] || exit 2; remove_source "$2" ;;
+  use) [ "$#" -eq 2 ] || exit 2; use_source_key "$2" ;;
+  next) select_relative_source next ;;
+  prev|previous) select_relative_source previous ;;
+  performance) performance_command "${2:-status}" ;;
+  backend) media_backend_command "${2:-status}" ;;
+  current) current_source_key ;;
+  catalog) source_catalog ;;
+  detect-backend) select_media_backend "${2:-automatic}" ;;
+  fallback) select_fallback ;;
+  fade) signal_backend USR1 ;;
+  migrate) xfce_plasma_source_migrate; cat "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ;;
+  run) run_background ;;
+  backend-run) [ "$#" -eq 2 ] || exit 2; backend_run "$2" ;;
+  cleanup) cleanup_runtime ;;
+  *) printf 'usage: %s {start|stop|restart|status|pause|resume|reload|shader SOURCE|video PATH [ID]|stream ID RTSP_URL [NAME]|activate ID|fallback|performance [MODE]}\n' "${0##*/}" >&2; exit 2 ;;
+esac

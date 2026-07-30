@@ -13,6 +13,10 @@
 #include <errno.h>
 #include <sys/inotify.h>
 
+#ifndef XFCE_PLASMA_VERSION
+#define XFCE_PLASMA_VERSION "unknown"
+#endif
+
 static volatile sig_atomic_t fade_out_requested = 0;
 static volatile sig_atomic_t terminate_requested = 0;
 
@@ -85,6 +89,51 @@ static int read_target_fps(void) {
         return 30;
     }
     return (int)parsed;
+}
+
+static float read_render_scale(void) {
+    const char *value = getenv("WALLPAPER_RENDER_SCALE");
+    char *end = NULL;
+    float parsed;
+
+    if (!value || !*value) return 1.0f;
+    errno = 0;
+    parsed = strtof(value, &end);
+    if (errno != 0 || end == value || *end != '\0' || parsed < 0.25f || parsed > 1.0f) {
+        fprintf(stderr, "warning: invalid WALLPAPER_RENDER_SCALE=%s; using 1.0\n", value);
+        return 1.0f;
+    }
+    return parsed;
+}
+
+static int scaled_dimension(int value, float scale) {
+    float scaled = (float)value * scale;
+    if (scaled < 1.0f) return 1;
+    if (scaled > (float)INT_MAX) return value;
+    return (int)(scaled + 0.5f);
+}
+
+static RenderTexture2D load_color_render_target(int width, int height) {
+    RenderTexture2D target = {0};
+    Image image = GenImageColor(width, height, BLACK);
+    target.id = rlLoadFramebuffer();
+    target.texture = LoadTextureFromImage(image);
+    UnloadImage(image);
+    if (target.id == 0U || target.texture.id == 0U) goto failure;
+    rlFramebufferAttach(target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0,
+        RL_ATTACHMENT_TEXTURE2D, 0);
+    if (!rlFramebufferComplete(target.id)) goto failure;
+    return target;
+
+failure:
+    if (target.texture.id != 0U) rlUnloadTexture(target.texture.id);
+    if (target.id != 0U) rlUnloadFramebuffer(target.id);
+    return (RenderTexture2D){0};
+}
+
+static void unload_color_render_target(RenderTexture2D target) {
+    if (target.texture.id != 0U) rlUnloadTexture(target.texture.id);
+    if (target.id != 0U) rlUnloadFramebuffer(target.id);
 }
 
 static Window find_pid(Display *d, Window w, Atom pid_atom, unsigned long pid) {
@@ -266,8 +315,14 @@ static bool shader_file_changed(int descriptor) {
 
 int main(int argc, char **argv) {
     Window parent = 0;
-    for (int i = 1; i < argc; i++) if (!strcmp(argv[i], "--wid") && i + 1 < argc)
-        parent = strtoul(argv[++i], NULL, 0);
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--version")) {
+            printf("xfce-plasma-renderer %s\n", XFCE_PLASMA_VERSION);
+            return 0;
+        }
+        if (!strcmp(argv[i], "--wid") && i + 1 < argc)
+            parent = strtoul(argv[++i], NULL, 0);
+    }
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
 
     Display *d = XOpenDisplay(NULL);
@@ -278,7 +333,7 @@ int main(int argc, char **argv) {
         height = DisplayHeight(d, DefaultScreen(d));
     }
 
-    InitWindow(width, height, "Tie Dye GPU Wallpaper");
+    InitWindow(width, height, "xfcePlasma Background");
 
     if (d) {
         XWindowAttributes a;
@@ -322,7 +377,12 @@ int main(int argc, char **argv) {
     float shader_time = start_time;
     float fade_out_start = -1.0f;
     int target_fps = read_target_fps();
+    float render_scale = read_render_scale();
+    RenderTexture2D render_target = {0};
+    int target_width = 0;
+    int target_height = 0;
     bool low_power = false;
+    fprintf(stderr, "performance: fps=%d render-scale=%.2f\n", target_fps, (double)render_scale);
     SetTargetFPS(target_fps);
     while (!terminate_requested) {
         if (!parent && IsKeyPressed(KEY_F)) ToggleFullscreen();
@@ -332,7 +392,29 @@ int main(int argc, char **argv) {
             if (own) XLowerWindow(d, own);
             XFlush(d);
         }
-        float resolution[2] = {(float)GetScreenWidth(), (float)GetScreenHeight()};
+        int screen_width = GetScreenWidth();
+        int screen_height = GetScreenHeight();
+        int wanted_width = scaled_dimension(screen_width, render_scale);
+        int wanted_height = scaled_dimension(screen_height, render_scale);
+        bool scaled_rendering = render_scale < 0.999f;
+        if (scaled_rendering && (render_target.id == 0U || target_width != wanted_width || target_height != wanted_height)) {
+            if (render_target.id != 0U) unload_color_render_target(render_target);
+            render_target = load_color_render_target(wanted_width, wanted_height);
+            if (render_target.id == 0U || render_target.texture.id == 0U) {
+                fprintf(stderr, "warning: render-scale framebuffer unavailable; using native resolution\n");
+                render_target = (RenderTexture2D){0};
+                render_scale = 1.0f;
+                scaled_rendering = false;
+                wanted_width = screen_width;
+                wanted_height = screen_height;
+            } else {
+                target_width = wanted_width;
+                target_height = wanted_height;
+                fprintf(stderr, "render target: %dx%d (desktop %dx%d)\n",
+                    target_width, target_height, screen_width, screen_height);
+            }
+        }
+        float resolution[2] = {(float)wanted_width, (float)wanted_height};
         float real_time = (float)GetTime();
         if (shader_watch >= 0 && shader_file_changed(shader_watch) && reload_state == 0) {
             reload_state = 1;
@@ -381,11 +463,28 @@ int main(int argc, char **argv) {
         SetShaderValue(active_shader.shader, active_shader.speed_location, &speed, SHADER_UNIFORM_FLOAT);
         SetShaderValue(active_shader.shader, active_shader.fade_location, &fade, SHADER_UNIFORM_FLOAT);
         SetShaderValue(active_shader.shader, active_shader.fade_target_location, &fade_target, SHADER_UNIFORM_FLOAT);
-        BeginDrawing(); BeginShaderMode(active_shader.shader);
-        DrawRectangle(0, 0, GetScreenWidth(), GetScreenHeight(), WHITE);
-        EndShaderMode(); EndDrawing();
+        if (scaled_rendering) {
+            BeginTextureMode(render_target);
+            ClearBackground(BLACK);
+            BeginShaderMode(active_shader.shader);
+            DrawRectangle(0, 0, wanted_width, wanted_height, WHITE);
+            EndShaderMode();
+            EndTextureMode();
+            BeginDrawing();
+            ClearBackground(BLACK);
+            DrawTexturePro(render_target.texture,
+                (Rectangle){0.0f, 0.0f, (float)wanted_width, (float)-wanted_height},
+                (Rectangle){0.0f, 0.0f, (float)screen_width, (float)screen_height},
+                (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
+            EndDrawing();
+        } else {
+            BeginDrawing(); BeginShaderMode(active_shader.shader);
+            DrawRectangle(0, 0, screen_width, screen_height, WHITE);
+            EndShaderMode(); EndDrawing();
+        }
     }
     if (shader_watch >= 0) close(shader_watch);
+    if (render_target.id != 0U) unload_color_render_target(render_target);
     UnloadShader(active_shader.shader);
     CloseWindow();
     if (d) XCloseDisplay(d);

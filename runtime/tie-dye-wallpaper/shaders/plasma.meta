@@ -1,0 +1,9 @@
+id=plasma
+display_name=Plasma
+type=shader
+category=Ambient
+description=Classic procedural plasma with slow-folding color bands and liquid motion.
+author=xfcePlasma project
+thumbnail=plasma.png
+sort_order=10
+capabilities=supports-speed,supports-pause,supports-live-reload

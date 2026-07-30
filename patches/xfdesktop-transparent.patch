@@ -1,0 +1,209 @@
+diff --git a/common/xfdesktop-common.h b/common/xfdesktop-common.h
+index 4e1a52e..ad229f9 100644
+--- a/common/xfdesktop-common.h
++++ b/common/xfdesktop-common.h
+@@ -55,0 +56 @@
++#define TRANSPARENT_BACKGROUND    "/backdrop/transparent-background"
+diff --git a/src/xfce-desktop.c b/src/xfce-desktop.c
+index e65ac0e..33cbd96 100644
+--- a/src/xfce-desktop.c
++++ b/src/xfce-desktop.c
+@@ -114,0 +115 @@ struct _XfceDesktopPrivate
++    gboolean transparent_background;
+@@ -149,0 +151 @@ enum
++    PROP_TRANSPARENT_BACKGROUND,
+@@ -180,0 +183,2 @@ static void xfce_desktop_set_single_workspace_number(XfceDesktop *desktop,
++static void xfce_desktop_set_transparent_background(XfceDesktop *desktop,
++                                                    gboolean transparent_background);
+@@ -259,0 +264,5 @@ xfce_desktop_setup_icon_view(XfceDesktop *desktop)
++        if(desktop->priv->transparent_background) {
++            g_object_set_data(G_OBJECT(desktop->priv->icon_view),
++                              "xfdesktop-transparent-background",
++                              GINT_TO_POINTER(TRUE));
++        }
+@@ -345,0 +355,45 @@ G_GNUC_END_IGNORE_DEPRECATIONS
++
++static void
++xfce_desktop_clear_surface(cairo_surface_t *surface,
++                           const cairo_region_t *clip_region)
++{
++    cairo_t *cr;
++
++    if(surface == NULL)
++        return;
++
++    cr = cairo_create(surface);
++    cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
++    cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
++
++    if(clip_region != NULL) {
++        gdk_cairo_region(cr, clip_region);
++        cairo_clip(cr);
++    }
++
++    cairo_paint(cr);
++    cairo_destroy(cr);
++}
++
++static void
++xfce_desktop_clear_opaque_region(XfceDesktop *desktop)
++{
++    GdkWindow *window;
++    Display *xdisplay;
++    Atom atom;
++
++    g_return_if_fail(XFCE_IS_DESKTOP(desktop));
++
++    if(!gtk_widget_get_realized(GTK_WIDGET(desktop)))
++        return;
++
++    window = gtk_widget_get_window(GTK_WIDGET(desktop));
++    if(window == NULL)
++        return;
++
++    xdisplay = GDK_WINDOW_XDISPLAY(window);
++    atom = XInternAtom(xdisplay, "_NET_WM_OPAQUE_REGION", False);
++    XDeleteProperty(xdisplay, GDK_WINDOW_XID(window), atom);
++    XFlush(xdisplay);
++}
++
+@@ -375,0 +430,3 @@ create_bg_surface(GdkScreen *gscreen, gpointer user_data)
++    if(desktop->priv->transparent_background)
++        xfce_desktop_clear_surface(desktop->priv->bg_surface, NULL);
++
+@@ -575,0 +633,24 @@ backdrop_changed_cb(XfceBackdrop *backdrop, gpointer user_data)
++        if(desktop->priv->transparent_background) {
++            if(!desktop->priv->bg_surface) {
++                surface = create_bg_surface(gscreen, desktop);
++
++                if(!surface) {
++                    if(clip_region != NULL)
++                        cairo_region_destroy(clip_region);
++
++                    return;
++                }
++            }
++
++            xfce_desktop_clear_surface(surface, clip_region);
++            gtk_widget_queue_draw_area(GTK_WIDGET(desktop), rect.x, rect.y,
++                                       rect.width, rect.height);
++            xfce_desktop_clear_opaque_region(desktop);
++            gtk_widget_show(GTK_WIDGET(desktop));
++
++            if(clip_region != NULL)
++                cairo_region_destroy(clip_region);
++
++            return;
++        }
++
+@@ -991,0 +1073,7 @@ xfce_desktop_class_init(XfceDesktopClass *klass)
++    g_object_class_install_property(gobject_class, PROP_TRANSPARENT_BACKGROUND,
++                                    g_param_spec_boolean("transparent-background",
++                                                         "transparent-background",
++                                                         "transparent-background",
++                                                         FALSE,
++                                                         XFDESKTOP_PARAM_FLAGS));
++
+@@ -1079,0 +1168,5 @@ xfce_desktop_set_property(GObject *object,
++        case PROP_TRANSPARENT_BACKGROUND:
++            xfce_desktop_set_transparent_background(desktop,
++                                                    g_value_get_boolean(value));
++            break;
++
+@@ -1128,0 +1222,4 @@ xfce_desktop_get_property(GObject *object,
++        case PROP_TRANSPARENT_BACKGROUND:
++            g_value_set_boolean(value, desktop->priv->transparent_background);
++            break;
++
+@@ -1147,0 +1245,15 @@ xfce_desktop_realize(GtkWidget *widget)
++
++    if(desktop->priv->transparent_background) {
++        GdkVisual *rgba_visual = gdk_screen_get_rgba_visual(desktop->priv->gscreen);
++
++        gtk_widget_set_app_paintable(widget, TRUE);
++
++        if(rgba_visual != NULL) {
++            gtk_widget_set_visual(widget, rgba_visual);
++            XF_DEBUG("transparent-background enabled, using RGBA visual depth %d",
++                     gdk_visual_get_depth(rgba_visual));
++        } else {
++            g_warning("transparent-background requested but no RGBA visual is available");
++        }
++    }
++
+@@ -1168,0 +1281,3 @@ xfce_desktop_realize(GtkWidget *widget)
++    if(desktop->priv->transparent_background)
++        xfce_desktop_clear_opaque_region(desktop);
++
+@@ -1376,0 +1492,3 @@ xfce_desktop_draw(GtkWidget *w,
++    if(XFCE_DESKTOP(w)->priv->transparent_background)
++        xfce_desktop_clear_opaque_region(XFCE_DESKTOP(w));
++
+@@ -1489,0 +1608,3 @@ xfce_desktop_connect_settings(XfceDesktop *desktop)
++    xfconf_g_property_bind(channel, TRANSPARENT_BACKGROUND, G_TYPE_BOOLEAN,
++                           G_OBJECT(desktop), "transparent-background");
++
+@@ -1793,0 +1915,49 @@ xfce_desktop_set_single_workspace_number(XfceDesktop *desktop,
++static void
++xfce_desktop_set_transparent_background(XfceDesktop *desktop,
++                                        gboolean transparent_background)
++{
++    g_return_if_fail(XFCE_IS_DESKTOP(desktop));
++
++    transparent_background = !!transparent_background;
++
++    if(transparent_background == desktop->priv->transparent_background)
++        return;
++
++    desktop->priv->transparent_background = transparent_background;
++
++    XF_DEBUG("transparent_background now %s",
++             transparent_background ? "TRUE" : "FALSE");
++
++    if(gtk_widget_get_realized(GTK_WIDGET(desktop))) {
++        if(transparent_background) {
++            GdkVisual *visual = gtk_widget_get_visual(GTK_WIDGET(desktop));
++
++            if(visual == NULL || gdk_visual_get_depth(visual) < 32) {
++                g_warning("transparent-background was enabled after realization; restart xfdesktop to obtain an RGBA visual");
++            }
++
++            if(desktop->priv->bg_surface != NULL)
++                xfce_desktop_clear_surface(desktop->priv->bg_surface, NULL);
++
++            if(desktop->priv->icon_view != NULL) {
++                g_object_set_data(G_OBJECT(desktop->priv->icon_view),
++                                  "xfdesktop-transparent-background",
++                                  GINT_TO_POINTER(TRUE));
++            }
++
++            xfce_desktop_clear_opaque_region(desktop);
++        } else {
++            if(desktop->priv->icon_view != NULL)
++                g_object_set_data(G_OBJECT(desktop->priv->icon_view),
++                                  "xfdesktop-transparent-background", NULL);
++
++            if(desktop->priv->bg_surface != NULL) {
++                cairo_surface_destroy(desktop->priv->bg_surface);
++                desktop->priv->bg_surface = NULL;
++            }
++        }
++
++        screen_size_changed_cb(desktop->priv->gscreen, desktop);
++    }
++}
++
+diff --git a/src/xfdesktop-icon-view.c b/src/xfdesktop-icon-view.c
+index 855e4ee..cac2068 100644
+--- a/src/xfdesktop-icon-view.c
++++ b/src/xfdesktop-icon-view.c
+@@ -2300,0 +2301,9 @@ xfdesktop_icon_view_draw(GtkWidget *widget,
++    if(g_object_get_data(G_OBJECT(widget), "xfdesktop-transparent-background") != NULL) {
++        cairo_save(cr);
++        cairo_set_operator(cr, CAIRO_OPERATOR_SOURCE);
++        cairo_set_source_rgba(cr, 0.0, 0.0, 0.0, 0.0);
++        gdk_cairo_rectangle(cr, &clipbox);
++        cairo_fill(cr);
++        cairo_restore(cr);
++    }
++

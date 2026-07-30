@@ -2,73 +2,352 @@
 set -Eeuo pipefail
 
 verbose=false
-case "${1:-}" in "") ;; --verbose) verbose=true ;; -h|--help) printf "usage: %s [--verbose]\n" "${0##*/}"; exit 0 ;; *) printf "unknown option: %s\n" "$1" >&2; exit 2 ;; esac
+project_root=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --verbose) verbose=true ;;
+    --project-root)
+      [ "$#" -ge 2 ] || { printf '%s\n' '--project-root requires a path' >&2; exit 2; }
+      project_root=$2
+      shift ;;
+    -h|--help) printf 'usage: %s [--verbose] [--project-root PATH]\n' "${0##*/}"; exit 0 ;;
+    *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
+  esac
+  shift
+done
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 if [ -r "$script_dir/../lib/xfce-plasma-common.sh" ]; then
+  # shellcheck source=../lib/xfce-plasma-common.sh
   . "$script_dir/../lib/xfce-plasma-common.sh"
 else
+  # shellcheck source=/dev/null
   . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
 fi
-
-fatal=0
-ok() { printf "OK    %s\n" "$*"; }
-warn() { printf "WARN  %s\n" "$*"; }
-fail() { printf "FAIL  %s\n" "$*"; fatal=$((fatal + 1)); }
-check_command() { local name=$1 required=${2:-yes}; if command -v "$name" >/dev/null 2>&1; then ok "$name"; elif [ "$required" = yes ]; then fail "$name is missing"; else warn "$name is unavailable"; fi; }
-check_elf() { local label=$1 path=$2; if [ ! -x "$path" ]; then fail "$label is missing: $path"; elif ldd "$path" 2>/dev/null | grep -q "not found"; then fail "$label has missing shared libraries"; [ "$verbose" = false ] || ldd "$path" | grep "not found"; else ok "$label dependencies"; fi; }
-check_writable() { local label=$1 path=$2 probe=$2; while [ ! -e "$probe" ] && [ "$probe" != / ]; do probe=$(dirname "$probe"); done; if [ -w "$probe" ]; then ok "$label writable"; else fail "$label is not writable: $path"; fi; }
-service_status() { local unit=$1; if systemctl --user is-active --quiet "$unit" 2>/dev/null; then ok "$unit active"; else warn "$unit inactive"; fi; }
-process_count() { local label=$1 count=$2; if [ "$count" -gt 1 ]; then warn "$label has $count processes"; elif [ "$count" -eq 1 ]; then ok "$label process count"; else warn "$label is not running"; fi; }
-
-printf "xfcePlasma doctor\n"
-if [ "${XDG_SESSION_TYPE:-}" = wayland ]; then fail "Wayland session is unsupported"; elif [ -n "${DISPLAY:-}" ]; then ok "X11 display ${DISPLAY}"; else fail "DISPLAY is not set"; fi
-case "${XDG_CURRENT_DESKTOP:-}" in *XFCE*|*Xfce*|*xfce*) ok "XFCE session" ;; *) if pgrep -x xfce4-session >/dev/null 2>&1; then ok "XFCE session process"; else warn "XFCE session was not detected"; fi ;; esac
-[ -r "$XFCE_PLASMA_XAUTHORITY" ] && ok "Xauthority readable" || warn "Xauthority not readable: $XFCE_PLASMA_XAUTHORITY"
-case "$XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS" in unix:path=*) [ -S "${XFCE_PLASMA_DBUS_SESSION_BUS_ADDRESS#unix:path=}" ] && ok "user DBus socket" || fail "user DBus socket is missing" ;; *) warn "unrecognized DBus address" ;; esac
-if systemctl --user show-environment >/dev/null 2>&1; then ok "systemd user manager"; else fail "systemd user manager unavailable"; fi
-
-for command_name in xwinwrap xrandr xprop xfconf-query wmctrl notify-send xdotool import convert; do check_command "$command_name" yes; done
-if command -v zenity >/dev/null 2>&1; then ok "zenity picker UI"; elif command -v rofi >/dev/null 2>&1; then ok "rofi picker UI"; else warn "neither zenity nor rofi is available"; fi
-check_command picom no
-
-renderer="$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper"
-xfdesktop_bin="$XFCE_PLASMA_XFDESKTOP_DIR/bin/xfdesktop"
-check_elf "renderer" "$renderer"
-check_elf "settings UI" "$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
-check_elf "patched xfdesktop" "$xfdesktop_bin"
-[ -x /usr/local/bin/xwinwrap ] && ok "xwinwrap executable" || fail "xwinwrap executable missing at /usr/local/bin/xwinwrap"
-
-shader_dir="$XFCE_PLASMA_RENDERER_DIR/shaders"
-user_shader_dir="$XFCE_PLASMA_USER_SHADER_DIR"
-selected_file="$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR/current-shader"
-shader_count=0
-for directory in "$shader_dir" "$user_shader_dir"; do
-  if [ -d "$directory" ]; then count=$(find "$directory" -maxdepth 1 -type f -name "*.fs" | wc -l); shader_count=$((shader_count + count)); fi
-done
-[ "$shader_count" -gt 0 ] && ok "$shader_count shader profiles" || fail "no shader profiles found"
-if [ -s "$selected_file" ]; then
-  selected=$(cat "$selected_file")
-  if [ -r "$shader_dir/$selected" ] || [ -r "$user_shader_dir/$selected" ]; then ok "selected shader: $selected"; else fail "selected shader is unreadable: $selected"; fi
+if [ -r "$script_dir/../lib/xfce-plasma-sources.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-sources.sh"
 else
-  warn "selected shader state is missing"
+  . "${XFCE_PLASMA_SOURCES:-$HOME/.local/lib/xfce-plasma/xfce-plasma-sources.sh}"
+fi
+if [ -r "$script_dir/../lib/xfce-plasma-performance.sh" ]; then
+  . "$script_dir/../lib/xfce-plasma-performance.sh"
+else
+  . "${XFCE_PLASMA_PERFORMANCE:-$HOME/.local/lib/xfce-plasma/xfce-plasma-performance.sh}"
 fi
 
-service_status tie-dye-wallpaper-mvp.service
-service_status xfdesktop-transparent.service
-service_status game-mode-guard.service
-service_status picom-effects.service
-process_count xwinwrap "$(pgrep -xc xwinwrap || true)"
-process_count xfdesktop "$(pgrep -xc xfdesktop || true)"
-process_count picom "$(pgrep -xc picom || true)"
-renderer_count=$(pgrep -fc "^([^[:space:]]*/)?tie-dye-wallpaper --wid " || true); process_count renderer "$renderer_count"
+errors=0
+warnings=0
+ok() { printf 'OK        %s\n' "$*"; }
+warning() {
+  local message=$1 action=$2
+  warnings=$((warnings + 1))
+  printf 'WARNING   %s\n          Fix: %s\n' "$message" "$action"
+}
+error() {
+  local message=$1 action=$2
+  errors=$((errors + 1))
+  printf 'ERROR     %s\n          Fix: %s\n' "$message" "$action"
+}
+optional() {
+  local message=$1 action=${2:-}
+  printf 'OPTIONAL  %s\n' "$message"
+  [ -z "$action" ] || printf '          Enable: %s\n' "$action"
+}
 
-if command -v xrandr >/dev/null 2>&1 && [ -n "${DISPLAY:-}" ]; then connected=$(xrandr --query 2>/dev/null | awk '/ connected/{count++} END{print count+0}'); [ "$connected" -gt 0 ] && ok "$connected connected display(s)" || warn "no connected displays reported"; fi
-check_writable "config directory" "$XFCE_PLASMA_CONFIG_DIR"
-check_writable "state directory" "$XFCE_PLASMA_STATE_DIR"
-check_writable "cache directory" "$XFCE_PLASMA_CACHE_DIR"
-[ ! -e "$XFCE_PLASMA_RUN_DIR/game-mode" ] || warn "game-mode state is currently active or stale"
+check_command() {
+  local command_name=$1 classification=$2 label=$3 action=$4
+  if command -v "$command_name" >/dev/null 2>&1; then
+    ok "$label available: $(command -v "$command_name")"
+  else
+    case "$classification" in
+      required) error "$label is missing" "$action" ;;
+      feature) warning "$label is missing; its feature is unavailable" "$action" ;;
+      optional) optional "$label is not installed" "$action" ;;
+    esac
+  fi
+}
 
-if [ "$verbose" = true ]; then printf "\nResolved paths\n  prefix: %s\n  config: %s\n  state: %s\n  cache: %s\n  runtime: %s\n  renderer: %s\n  xfdesktop: %s\n" "$XFCE_PLASMA_PREFIX" "$XFCE_PLASMA_CONFIG_DIR" "$XFCE_PLASMA_STATE_DIR" "$XFCE_PLASMA_CACHE_DIR" "$XFCE_PLASMA_RUN_DIR" "$renderer" "$xfdesktop_bin"; fi
-printf "\nResult: %s blocking problem(s)\n" "$fatal"
-[ "$fatal" -eq 0 ]
+check_elf() {
+  local label=$1 path=$2 action=$3 missing
+  if [ ! -x "$path" ]; then error "$label is missing: $path" "$action"; return; fi
+  missing=$(ldd "$path" 2>/dev/null | awk '/not found/{print $1}' | paste -sd, -)
+  if [ -n "$missing" ]; then
+    error "$label has missing shared libraries: $missing" "$action"
+  else
+    ok "$label exists and its shared libraries resolve: $path"
+  fi
+}
+
+check_writable() {
+  local label=$1 path=$2 action=$3 probe=$2
+  while [ ! -e "$probe" ] && [ "$probe" != / ]; do probe=$(dirname "$probe"); done
+  if [ -w "$probe" ]; then ok "$label is writable: $path"
+  else error "$label is not writable: $path" "$action"
+  fi
+}
+
+binary_version() {
+  local path=$1
+  if command -v timeout >/dev/null 2>&1; then timeout 3 "$path" --version 2>/dev/null | sed -n '1p'
+  else "$path" --version 2>/dev/null | sed -n '1p'
+  fi
+}
+
+check_native_version() {
+  local label=$1 path=$2 expected=$3 origin=$4 legacy_safe=${5:-no} reported
+  case "$origin:$legacy_safe" in
+    built-from-source:*|bundled-runtime:*|*:yes)
+      reported=$(binary_version "$path" || true)
+      if [ -z "$reported" ]; then
+        error "$label did not answer --version" "Reinstall with ./install.sh after a successful make."
+      elif [ "$expected" != unavailable ] && [ "${reported##* }" != "$expected" ]; then
+        warning "$label version differs from installed project version: $reported vs $expected" "Run make clean && make, then review ./install.sh --dry-run and reinstall."
+      else
+        ok "$label runs and reports $reported"
+      fi ;;
+    *) warning "$label version cannot be safely probed on this legacy install" "Install this release so the version/origin markers and native --version support are present." ;;
+  esac
+}
+
+service_report() {
+  local unit=$1 label=$2 required_running=$3
+  if systemctl --user cat "$unit" >/dev/null 2>&1; then ok "$label service is installed: $unit"
+  else error "$label service is not installed: $unit" "Run ./install.sh, then systemctl --user daemon-reload."; return; fi
+  if systemctl --user is-enabled --quiet "$unit" 2>/dev/null; then ok "$label service is enabled"
+  else warning "$label service is disabled" "Run systemctl --user enable $unit if it should start with the session."; fi
+  if systemctl --user is-active --quiet "$unit" 2>/dev/null; then ok "$label service is running"
+  elif [ "$required_running" = yes ]; then warning "$label service is not running" "Run systemctl --user start $unit and inspect journalctl --user -u $unit."
+  else optional "$label service is currently inactive" "Run systemctl --user start $unit when that feature is wanted."; fi
+}
+
+compare_artifact() {
+  local label=$1 first=$2 second=$3 action=$4
+  [ -f "$first" ] && [ -f "$second" ] || return 0
+  if cmp -s "$first" "$second"; then ok "$label matches"
+  else warning "$label differs" "$action"; fi
+}
+
+installed_version=unavailable
+[ ! -r "$XFCE_PLASMA_VERSION_FILE" ] || installed_version=$(sed -n '1p' "$XFCE_PLASMA_VERSION_FILE")
+install_origin=$(xfce_plasma_install_origin)
+source_version=unavailable
+if [ -n "$project_root" ] && [ -r "$project_root/VERSION" ]; then source_version=$(sed -n '1p' "$project_root/VERSION"); fi
+if [ "$source_version" != unavailable ]; then project_version=$source_version; else project_version=$installed_version; fi
+renderer=$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper
+settings_ui=$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui
+xfdesktop_bin=$XFCE_PLASMA_XFDESKTOP_DIR/bin/xfdesktop
+picom_bin=$XFCE_PLASMA_BIN_DIR/picom
+shader_dir=$XFCE_PLASMA_RENDERER_DIR/shaders
+active_shader=$XFCE_PLASMA_RENDERER_DIR/shader.fs
+selected_file=$XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR/current-shader
+active_source_type=shader
+active_source_id=plasma
+if [ -s "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ]; then
+  active_source_type=$(xfce_plasma_source_active_type)
+  active_source_id=$(xfce_plasma_source_active_id)
+elif [ -s "$selected_file" ]; then
+  active_source_id=$(xfce_plasma_source_canonical_shader_id "$(sed -n '1p' "$selected_file")")
+fi
+backend_name=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" backend 2>/dev/null || printf unavailable)
+backend_pid=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" backend_pid 2>/dev/null || printf 0)
+background_window=$(xfce_plasma_config_get "$XFCE_PLASMA_BACKEND_STATE_FILE" window_id 2>/dev/null || true)
+
+printf 'xfcePlasma doctor\n'
+printf 'Project version: %s\nInstalled version: %s\nInstall origin: %s\n' "$project_version" "$installed_version" "$install_origin"
+printf 'Active source: %s/%s\nSelected backend: %s\n' "$active_source_type" "$active_source_id" "$backend_name"
+printf 'Renderer path: %s\nSettings UI path: %s\n\n' "$renderer" "$settings_ui"
+
+if [ "$install_origin" = legacy-or-unknown ] || [ "$install_origin" = not-installed ]; then
+  warning "installation origin is $install_origin" "Review ./install.sh --dry-run and install this release to create trustworthy version and origin markers."
+else
+  ok "installation origin is $install_origin"
+fi
+if [ "$source_version" != unavailable ] && [ "$installed_version" = unavailable ]; then
+  warning "no installed VERSION marker was found" "Review ./install.sh --dry-run and reinstall from $project_root."
+elif [ "$source_version" != unavailable ] && [ "$source_version" != "$installed_version" ]; then
+  warning "source and installed versions differ: $source_version vs $installed_version" "Build and reinstall the reviewed source tree."
+elif [ "$source_version" != unavailable ]; then
+  ok "source and installed project versions match"
+fi
+
+printf '\nSession and X11\n'
+case "${XDG_SESSION_TYPE:-unknown}" in
+  x11) ok "session type is X11" ;;
+  wayland) error "session type is Wayland; xfcePlasma does not support Wayland" "Log into an XFCE X11 session." ;;
+  *) warning "XDG_SESSION_TYPE is not set to x11" "Use an XFCE X11 session and export XDG_SESSION_TYPE=x11 through the display manager." ;;
+esac
+if [ -n "${DISPLAY:-}" ]; then ok "DISPLAY is set: $DISPLAY"
+else error "DISPLAY is not set" "Run from the graphical XFCE X11 session or import DISPLAY into the systemd user manager."; fi
+case "${XDG_CURRENT_DESKTOP:-}" in
+  *XFCE*|*Xfce*|*xfce*) ok "XFCE desktop session detected" ;;
+  *) if pgrep -x xfce4-session >/dev/null 2>&1; then ok "XFCE session process detected"
+     else warning "XFCE session was not detected" "Run xfcePlasma from an XFCE X11 session."; fi ;;
+esac
+[ -r "$XFCE_PLASMA_XAUTHORITY" ] && ok "Xauthority is readable: $XFCE_PLASMA_XAUTHORITY" || warning "Xauthority is not readable: $XFCE_PLASMA_XAUTHORITY" "Set XAUTHORITY to the active X11 cookie file before starting services."
+if [ -n "${DISPLAY:-}" ] && command -v xrandr >/dev/null 2>&1; then
+  if xrandr --query >/dev/null 2>&1; then ok "X11 display accepts RandR queries"
+  else error "X11 display cannot be queried" "Verify DISPLAY/XAUTHORITY, then run xrandr --query in the same session."; fi
+fi
+if systemctl --user show-environment >/dev/null 2>&1; then ok "systemd user manager is available"
+else error "systemd user manager is unavailable" "Start a normal user session with systemd --user support."; fi
+
+printf '\nRequired and feature dependencies\n'
+check_command xwinwrap required xwinwrap "Install xwinwrap and ensure it is on PATH."
+check_command xfconf-query required xfconf-query "Install the XFCE xfconf command-line tools."
+check_command xrandr required xrandr "Install the X11 xrandr tools."
+check_command xprop feature xprop "Install x11-utils for fullscreen/game detection."
+check_command import feature "ImageMagick import" "Install ImageMagick for game-mode captures."
+check_command convert feature "ImageMagick convert" "Install ImageMagick for dark/desaturated game-mode rasters."
+check_command xdotool feature xdotool "Install xdotool for game/fullscreen detection."
+check_command wmctrl optional wmctrl "Install wmctrl for the optional floating Whisker helper."
+check_command notify-send optional "desktop notifications" "Install libnotify-bin for notifications."
+check_command mpv feature "mpv video/stream backend" "Install mpv to enable local video and RTSP backgrounds; shaders remain available."
+check_command vlc optional "VLC media backend" "Install VLC only if the experimental alternate media backend is wanted."
+check_command ffmpeg optional "FFmpeg thumbnail/probe tools" "Install FFmpeg only for optional video probing and thumbnail generation."
+check_command glxinfo optional "OpenGL capability reporting" "Install mesa-utils for detailed OpenGL diagnostics and automatic profiling."
+if command -v zenity >/dev/null 2>&1; then ok "optional graphical picker is available through zenity"
+elif command -v rofi >/dev/null 2>&1; then ok "optional graphical picker is available through rofi"
+else optional "neither zenity nor rofi is installed" "Install either tool only if the shell picker UI is wanted."; fi
+
+printf '\nNative components\n'
+check_elf renderer "$renderer" "Run make, then ./install.sh."
+check_elf "settings UI" "$settings_ui" "Run make, then ./install.sh."
+check_elf "transparent xfdesktop" "$xfdesktop_bin" "Reinstall the documented compatible xfdesktop artifact; do not substitute an unknown binary."
+check_elf "project Picom" "$picom_bin" "Reinstall the documented Picom compatibility artifact or install a compatible Picom."
+[ ! -x "$renderer" ] || check_native_version renderer "$renderer" "$installed_version" "$install_origin"
+[ ! -x "$settings_ui" ] || check_native_version "settings UI" "$settings_ui" "$installed_version" "$install_origin" yes
+
+printf '\nSources, shaders, and writable paths\n'
+if [ -s "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" ]; then
+  if xfce_plasma_source_validate_file "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" >/dev/null 2>&1; then
+    ok "active source configuration is valid: $active_source_type/$active_source_id"
+  else
+    error "active source configuration is invalid: $XFCE_PLASMA_ACTIVE_SOURCE_FILE" "Select a valid source with xfce-plasma-background shader SOURCE or fallback."
+  fi
+else
+  warning "new active-source state has not been migrated yet" "Run xfce-plasma-background migrate; the legacy shader selection remains intact."
+fi
+if [ -d "$shader_dir" ]; then
+  shader_count=$(find "$shader_dir" -maxdepth 1 -type f -name '*.fs' | wc -l)
+  if [ "$shader_count" -gt 0 ]; then ok "$shader_count bundled shader profile(s) found in $shader_dir"
+  else error "shader directory contains no .fs files: $shader_dir" "Run ./install.sh to restore bundled shaders."; fi
+else error "shader directory is missing: $shader_dir" "Run ./install.sh to install bundled shaders."; fi
+if [ -r "$active_shader" ]; then ok "active shader is readable: $active_shader"
+else error "active shader is missing or unreadable: $active_shader" "Select a shader with animated-wallpaper-picker set NAME, or reinstall for the initial shader."; fi
+if [ -s "$selected_file" ]; then
+  selected=$(sed -n '1p' "$selected_file")
+  if [ -r "$shader_dir/$selected" ] || [ -r "$XFCE_PLASMA_USER_SHADER_DIR/$selected" ]; then ok "selected shader exists: $selected"
+  else error "selected shader state points to a missing file: $selected" "Choose an existing shader in Settings or run animated-wallpaper-picker set NAME."; fi
+else warning "selected shader state is missing" "Select a shader once to create $selected_file."; fi
+check_writable "configuration path" "$XFCE_PLASMA_CONFIG_DIR" "Fix ownership/permissions for the user XDG configuration directory."
+check_writable "state path" "$XFCE_PLASMA_STATE_DIR" "Fix ownership/permissions for the user XDG state directory."
+check_writable "cache path" "$XFCE_PLASMA_CACHE_DIR" "Fix ownership/permissions for the user XDG cache directory."
+
+printf '\nPerformance profile and OpenGL\n'
+performance_profile=$(xfce_plasma_performance_detect 2>/dev/null || true)
+if [ -n "$performance_profile" ]; then
+  performance_mode=$(xfce_plasma_config_get /dev/stdin mode <<< "$performance_profile")
+  performance_tier=$(xfce_plasma_config_get /dev/stdin tier <<< "$performance_profile")
+  performance_reason=$(xfce_plasma_config_get /dev/stdin reason <<< "$performance_profile")
+  performance_fps=$(xfce_plasma_config_get /dev/stdin fps <<< "$performance_profile")
+  performance_scale=$(xfce_plasma_config_get /dev/stdin render_scale <<< "$performance_profile")
+  performance_renderer=$(xfce_plasma_config_get /dev/stdin renderer <<< "$performance_profile")
+  performance_gl=$(xfce_plasma_config_get /dev/stdin opengl_version <<< "$performance_profile")
+  performance_software=$(xfce_plasma_config_get /dev/stdin software <<< "$performance_profile")
+  ok "performance mode=$performance_mode tier=$performance_tier ($performance_reason)"
+  ok "background quality: fps=$performance_fps render-scale=$performance_scale"
+  if [ "$performance_software" = true ]; then warning "software OpenGL renderer detected: $performance_renderer" "Use Low mode or install/configure the appropriate hardware OpenGL driver."
+  else ok "OpenGL renderer: $performance_renderer"; fi
+  case "$performance_gl" in
+    3.[3-9]*|[4-9].*) ok "OpenGL version supports the normal GLSL 3.30 path: $performance_gl" ;;
+    unknown) warning "OpenGL version could not be detected" "Install mesa-utils and run xfce-plasma-background performance redetect from the X11 session." ;;
+    *) error "OpenGL 3.3 support was not detected: $performance_gl" "Restore an ordinary XFCE wallpaper or configure a driver providing OpenGL 3.3." ;;
+  esac
+else
+  warning "performance profile could not be created" "Run xfce-plasma-background performance redetect in the XFCE X11 session."
+fi
+
+if [ "$active_source_type" = video ]; then
+  active_config=$(xfce_plasma_source_active_config 2>/dev/null || true)
+  if [ -n "$active_config" ]; then
+    video_path=$(xfce_plasma_source_value "$active_config" path)
+    video_fit=$(xfce_plasma_source_value "$active_config" fit cover)
+    video_loop=$(xfce_plasma_source_value "$active_config" loop true)
+    video_muted=$(xfce_plasma_source_value "$active_config" muted true)
+    if [ -r "$video_path" ]; then ok "selected video is readable: $video_path"
+    else error "selected video is missing or unreadable: $video_path" "Reconnect its storage or choose another background source."; fi
+    ok "video policy: fit=$video_fit loop=$video_loop muted=$video_muted"
+  fi
+elif [ "$active_source_type" = stream ]; then
+  active_config=$(xfce_plasma_source_active_config 2>/dev/null || true)
+  if [ -n "$active_config" ]; then
+    stream_url=$(xfce_plasma_redact_url "$(xfce_plasma_source_value "$active_config" url)")
+    stream_latency=$(xfce_plasma_source_value "$active_config" latency low)
+    stream_reconnect=$(xfce_plasma_source_value "$active_config" reconnect true)
+    stream_timeout=$(xfce_plasma_source_value "$active_config" network_timeout 10)
+    credential_file=$(xfce_plasma_source_value "$active_config" credential_file)
+    ok "stream endpoint: $stream_url"
+    ok "stream policy: latency=$stream_latency reconnect=$stream_reconnect timeout=${stream_timeout}s muted=true"
+    if [ -n "$credential_file" ]; then
+      if [ -r "$credential_file" ] && [ "$(stat -c %a "$credential_file" 2>/dev/null)" = 600 ]; then ok "stream credentials are stored in a protected mode-0600 file"
+      else error "stream credential storage is missing or unsafe" "Re-save the stream credentials; do not place them in source metadata."; fi
+    else optional "stream has no stored credentials"; fi
+  fi
+fi
+
+printf '\nServices and running stack\n'
+if systemctl --user show-environment >/dev/null 2>&1; then
+  service_report tie-dye-wallpaper-mvp.service "background session" yes
+  service_report xfdesktop-transparent.service "transparent desktop" yes
+  service_report game-mode-guard.service "game guard" no
+  if systemctl --user is-active --quiet picom-effects.service 2>/dev/null; then ok "Picom effects service is running"
+  else warning "Picom effects service is not running" "Run xfce-plasma-settings picom start and inspect its user journal if it fails."; fi
+fi
+renderer_count=$(pgrep -fc '^([^[:space:]]*/)?tie-dye-wallpaper --wid ' || true)
+xfdesktop_count=$(pgrep -xc xfdesktop || true)
+picom_count=$(pgrep -xc picom || true)
+if [ "$active_source_type" = shader ]; then
+  if [ "$renderer_count" -eq 1 ]; then ok "one shader renderer process is running"
+  elif [ "$renderer_count" -gt 1 ]; then warning "$renderer_count shader renderer processes are running" "Run xfce-plasma-background restart and check for legacy autostart duplicates."
+  else warning "no shader renderer process is running" "Run xfce-plasma-background start and inspect the background service journal."; fi
+fi
+if [ "$backend_pid" != 0 ] && kill -0 "$backend_pid" 2>/dev/null; then ok "tracked backend PID is running: $backend_pid"
+elif systemctl --user is-active --quiet tie-dye-wallpaper-mvp.service 2>/dev/null; then warning "background service is active without a live tracked backend PID" "Run xfce-plasma-background restart and inspect its status."
+fi
+if [ -n "$background_window" ]; then ok "tracked X11 background window: $background_window"; fi
+if [ "$xfdesktop_count" -eq 1 ]; then ok "one xfdesktop process is running"
+elif [ "$xfdesktop_count" -gt 1 ]; then warning "$xfdesktop_count xfdesktop processes are running" "Restart xfdesktop-transparent.service and remove duplicate XFCE autostarts."
+else warning "no xfdesktop process is running" "Start xfdesktop-transparent.service, or use restore-packaged-xfdesktop for ordinary XFCE."; fi
+if [ "$picom_count" -eq 1 ]; then ok "one Picom process is running"
+elif [ "$picom_count" -gt 1 ]; then warning "$picom_count Picom processes are running" "Stop duplicate compositors and start only the intended Picom instance."
+else optional "no Picom process is running" "Start project Picom if window effects and transparent compositing are wanted."; fi
+
+if [ -n "$project_root" ]; then
+  printf '\nSource, build, and bundled artifact consistency\n'
+  compare_artifact "built and bundled renderer" "$project_root/build/xfce-plasma-renderer" "$project_root/runtime/tie-dye-wallpaper/tie-dye-wallpaper" "Run make clean && make; refresh bundled release artifacts only through the documented release process."
+  compare_artifact "built and bundled settings UI" "$project_root/build/xfce-plasma-settings-ui" "$project_root/runtime/xfce-plasma-settings-ui" "Run make clean && make; refresh bundled release artifacts only through the documented release process."
+  case "$install_origin" in
+    built-from-source)
+      compare_artifact "installed and current built renderer" "$renderer" "$project_root/build/xfce-plasma-renderer" "Review ./install.sh --dry-run, then reinstall the current build."
+      compare_artifact "installed and current built settings UI" "$settings_ui" "$project_root/build/xfce-plasma-settings-ui" "Review ./install.sh --dry-run, then reinstall the current build." ;;
+    bundled-runtime)
+      compare_artifact "installed and bundled renderer" "$renderer" "$project_root/runtime/tie-dye-wallpaper/tie-dye-wallpaper" "Reinstall with --use-bundled-runtime only if that fallback is intentional."
+      compare_artifact "installed and bundled settings UI" "$settings_ui" "$project_root/runtime/xfce-plasma-settings-ui" "Reinstall with --use-bundled-runtime only if that fallback is intentional." ;;
+    legacy-or-unknown|not-installed)
+      compare_artifact "installed and current built renderer" "$renderer" "$project_root/build/xfce-plasma-renderer" "Review the live/source difference, then reinstall only after the build is approved."
+      compare_artifact "installed and current built settings UI" "$settings_ui" "$project_root/build/xfce-plasma-settings-ui" "Review the live/source difference, then reinstall only after the build is approved." ;;
+  esac
+  compare_artifact "installed and repository transparent xfdesktop" "$xfdesktop_bin" "$project_root/runtime/xfdesktop-transparent/bin/xfdesktop" "Do not overwrite blindly; recover the live patch/source difference and document it before reinstalling this component."
+fi
+
+if [ -e "$XFCE_PLASMA_RUN_DIR/game-mode" ]; then warning "game-mode state is still present" "If no game is running, restart game-mode-guard.service and use xfce-plasma-settings recover."
+else ok "no stale game-mode marker is present"; fi
+
+if [ "$verbose" = true ]; then
+  printf '\nResolved paths\n'
+  printf '  prefix: %s\n  config: %s\n  data: %s\n  state: %s\n  cache: %s\n  runtime: %s\n' \
+    "$XFCE_PLASMA_PREFIX" "$XFCE_PLASMA_CONFIG_DIR" "$XFCE_PLASMA_DATA_DIR" \
+    "$XFCE_PLASMA_STATE_DIR" "$XFCE_PLASMA_CACHE_DIR" "$XFCE_PLASMA_RUN_DIR"
+fi
+printf '\nResult: %s error(s), %s warning(s)\n' "$errors" "$warnings"
+[ "$errors" -eq 0 ]

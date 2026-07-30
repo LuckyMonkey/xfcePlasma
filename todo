@@ -1,3 +1,32 @@
+# Current status — 2026-07-29
+
+This file retains the original long-form roadmap below. Current decisions and
+public-alpha progress take precedence where they conflict with older text.
+
+Completed in the public-alpha hardening branch:
+
+- explicit build/runtime dependency diagnostics
+- source-built, versioned renderer and GTK settings binaries by default
+- deterministic manifest upgrades and bounded uninstall
+- shader metadata, static thumbnails, curated gallery, and fallback cards
+- Everyday versus Create / Advanced settings hierarchy
+- actionable doctor output and source/install mismatch reporting
+- recovered xfdesktop transparency patch, pinned Picom build input, and runtime checksums
+- reproducibility, build, upgrade, recovery, shader-authoring, and troubleshooting documentation
+
+Deferred by current project direction:
+
+- private artwork separation
+- custom shader/plugin framework work beyond local `.fs` shader support
+
+Remaining public-release blockers:
+
+- select and add a project-wide engine/artwork/documentation license
+- resolve xwinwrap's exact source revision and redistribution license
+- remove the patched xfdesktop artifact's user-specific compiled resource prefix
+- reproduce and manually test the full install/upgrade on an isolated XFCE/X11 account
+- decide whether the machine-specific desktop-icon sort hook should be redesigned portably
+
 You are working inside the xfcePlasma repository.
 
 Your job is to refactor this project into a lean, portable, reproducible XFCE/X11 animated-shader desktop system using:

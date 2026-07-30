@@ -5,7 +5,8 @@ STATE_DIR=${GAME_MODE_RASTER_STATE_DIR:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/x
 FRAME_DIR=$STATE_DIR/frames
 PROPERTY_STATE=$STATE_DIR/wallpaper-properties.tsv
 TRANSPARENT_STATE=$STATE_DIR/transparent-background
-WINDOW_NAME=${WALLPAPER_WINDOW_NAME:-^Tie Dye GPU Wallpaper$}
+WINDOW_NAME=${WALLPAPER_WINDOW_NAME:-^(xfcePlasma Background|Tie Dye GPU Wallpaper)$}
+BACKGROUND_STATE=${XFCE_PLASMA_BACKEND_STATE_FILE:-${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/xfce-plasma/backend.state}
 FADE_STEPS=${GAME_MODE_FADE_STEPS:-5}
 FADE_DELAY=${GAME_MODE_FADE_DELAY:-0.08}
 
@@ -37,7 +38,8 @@ set_monitor_image() {
 capture_frame() {
     require_tools
     local window full output geometry width rest height offsets x y image property value
-    window=$(xdotool search --name "$WINDOW_NAME" 2>/dev/null | tail -n 1)
+    window=$(awk -F= '$1 == "window_id" { print $2; exit }' "$BACKGROUND_STATE" 2>/dev/null || true)
+    if [ -z "$window" ]; then window=$(xdotool search --name "$WINDOW_NAME" 2>/dev/null | tail -n 1); fi
     [ -n "$window" ] || { printf 'Animated wallpaper window not found\n' >&2; return 1; }
     mkdir -p "$FRAME_DIR"
     chmod 700 "$STATE_DIR" "$FRAME_DIR"

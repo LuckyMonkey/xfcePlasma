@@ -11,10 +11,9 @@ service=${WALLPAPER_SERVICE:-tie-dye-wallpaper-mvp.service}
 wait_seconds=${GAME_MODE_FADE_WAIT_SECONDS:-1}
 
 request_native_fade_out() {
-  local pids=()
-  mapfile -t pids < <(pgrep -f "^([^[:space:]]*/)?tie-dye-wallpaper --wid " || true)
-  if [ "${#pids[@]}" -gt 0 ]; then
-    kill -USR1 "${pids[@]}" 2>/dev/null || true
+  local controller=${XFCE_PLASMA_BACKGROUND_COMMAND:-$HOME/.local/bin/xfce-plasma-background}
+  if [ -x "$controller" ]; then
+    "$controller" fade >/dev/null 2>&1 || true
     sleep "$wait_seconds"
   fi
 }

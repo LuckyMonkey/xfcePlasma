@@ -82,6 +82,10 @@ grep -qx 'speed fast' "$settings_log"
 grep -qx 'systemctl --user enable --now game-mode-guard.service' "$settings_log"
 grep -qx 'monitor --once' "$settings_log"
 grep -qx 'recover' "$settings_log"
-[ "$($repo_root/build/xfce-plasma-settings-ui --version)" = "xfce-plasma-settings-ui 2" ]
+expected_version=$(sed -n '1p' "$repo_root/VERSION")
+[ "$($repo_root/build/xfce-plasma-settings-ui --version)" = "xfce-plasma-settings-ui $expected_version" ]
+[ "$($repo_root/build/xfce-plasma-renderer --version)" = "xfce-plasma-renderer $expected_version" ]
+grep -q 'Background collection — shaders featured' "$repo_root/src/settings/main.c"
+grep -q 'Add muted video' "$repo_root/src/settings/main.c"
 
 printf 'test-settings ok\n'

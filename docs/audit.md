@@ -1,4 +1,10 @@
-# Phase 1 Audit
+# Phase 1 Audit (Historical)
+
+> Archived on 2026-07-29. This document records the pre-hardening state and its
+> recommendations; statements such as “source absent” describe that snapshot,
+> not the current tree. See [README.md](../README.md) for the current
+> architecture and [binary-provenance.md](binary-provenance.md) for the current
+> source/artifact audit.
 
 Date: 2026-07-25
 Repository: `xfcePlasma`

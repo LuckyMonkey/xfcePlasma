@@ -1,9 +1,10 @@
-#!/bin/sh
-systemctl --user stop tie-dye-wallpaper-mvp.service 2>/dev/null || true
-systemctl --user stop tie-dye-wallpaper.service 2>/dev/null || true
-systemctl --user stop transparent-desktop.service 2>/dev/null || true
-pkill -f '^spacefm .*--desktop$' 2>/dev/null || true
-pkill -f 'transparent-desktop/desktop-folder.py' 2>/dev/null || true
-pkill -x xwinwrap 2>/dev/null || true
-pkill -f '^./tie-dye-wallpaper --wid ' 2>/dev/null || true
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+if [ -x "$script_dir/xfce-plasma-background" ]; then
+  "$script_dir/xfce-plasma-background" stop 2>/dev/null || true
+else
+  "$HOME/.local/bin/xfce-plasma-background" stop 2>/dev/null || true
+fi
 notify-send "Animated wallpaper stopped" "XFCE desktop remains active." 2>/dev/null || true

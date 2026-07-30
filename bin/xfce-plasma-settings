@@ -9,7 +9,15 @@ else
 fi
 xfce_plasma_export_session_env
 
-run_bin() { "$XFCE_PLASMA_BIN_DIR/$1" "${@:2}"; }
+run_bin() {
+  local command=$1
+  shift
+  if [ "$XFCE_PLASMA_BIN_DIR" = "$HOME/.local/bin" ] && [ -x "$script_dir/$command" ]; then
+    "$script_dir/$command" "$@"
+  else
+    "$XFCE_PLASMA_BIN_DIR/$command" "$@"
+  fi
+}
 service_status() { systemctl --user is-active "$1" 2>/dev/null || true; }
 
 settings_ui_path() {
@@ -17,6 +25,24 @@ settings_ui_path() {
   elif [ -x "$script_dir/../build/xfce-plasma-settings-ui" ]; then printf '%s\n' "$script_dir/../build/xfce-plasma-settings-ui"
   else printf '%s\n' "$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui"
   fi
+}
+
+binary_version() {
+  local path=$1
+  if [ -x "$path" ]; then "$path" --version 2>/dev/null | sed -n '1p'
+  else printf 'missing\n'; fi
+}
+
+version_report() {
+  local renderer renderer_version settings_ui origin
+  renderer=$XFCE_PLASMA_RENDERER_DIR/tie-dye-wallpaper
+  settings_ui=$XFCE_PLASMA_LIB_DIR/xfce-plasma-settings-ui
+  origin=$(xfce_plasma_install_origin)
+  case $origin in built-from-source|bundled-runtime) renderer_version=$(binary_version "$renderer") ;; *) renderer_version='unavailable (legacy install)' ;; esac
+  printf 'project version: %s\n' "$(xfce_plasma_project_version)"
+  printf 'install origin: %s\n' "$origin"
+  printf 'renderer path: %s\nrenderer version: %s\n' "$renderer" "$renderer_version"
+  printf 'settings UI path: %s\nsettings UI version: %s\n' "$settings_ui" "$(binary_version "$settings_ui")"
 }
 
 run_gui() {
@@ -69,8 +95,8 @@ monitor_control() {
 
 shortcut_command() {
   case "$1" in
-    wallpaper-prev) printf '%s/animated-wallpaper-picker prev\n' "$XFCE_PLASMA_BIN_DIR";;
-    wallpaper-next) printf '%s/animated-wallpaper-picker next\n' "$XFCE_PLASMA_BIN_DIR";;
+    wallpaper-prev) printf '%s/xfce-plasma-background previous\n' "$XFCE_PLASMA_BIN_DIR";;
+    wallpaper-next) printf '%s/xfce-plasma-background next\n' "$XFCE_PLASMA_BIN_DIR";;
     speed-up) printf '%s/animated-wallpaper-speed up\n' "$XFCE_PLASMA_BIN_DIR";;
     speed-down) printf '%s/animated-wallpaper-speed down\n' "$XFCE_PLASMA_BIN_DIR";;
     stop-wallpaper) printf '%s/stop-animated-wallpaper\n' "$XFCE_PLASMA_BIN_DIR";;
@@ -160,8 +186,11 @@ shortcut_control() {
 forward_or_default() { local command=$1 default=$2; shift 2; if [ "$#" -eq 0 ]; then set -- "$default"; fi; run_bin "$command" "$@"; }
 
 case "${1:-gui}" in
+  --version) printf 'xfce-plasma %s\n' "$(xfce_plasma_project_version)";;
+  version) version_report;;
   gui|--gui) run_gui;;
   status|diagnostics) shift || true; run_bin xfce-plasma-doctor "${@}";;
+  background) shift; forward_or_default xfce-plasma-background status "$@";;
   wallpaper) shift; forward_or_default animated-wallpaper-picker pick "$@";;
   speed) shift; forward_or_default animated-wallpaper-speed current "$@";;
   shortcuts) shift; shortcut_control "$@";;
@@ -170,5 +199,5 @@ case "${1:-gui}" in
   desktop) shift; desktop_control "${1:-status}";;
   monitors) shift; monitor_control "${1:-status}";;
   recover) run_bin start-transparent-xfdesktop-session;;
-  *) printf 'usage: %s [gui|diagnostics|wallpaper ACTION|speed ACTION|shortcuts ACTION|game ACTION|picom ACTION|desktop ACTION|monitors ACTION|recover]\n' "${0##*/}" >&2; exit 2;;
+  *) printf 'usage: %s [--version|gui|diagnostics|background ACTION|wallpaper ACTION|speed ACTION|shortcuts ACTION|game ACTION|picom ACTION|desktop ACTION|monitors ACTION|recover]\n' "${0##*/}" >&2; exit 2;;
 esac

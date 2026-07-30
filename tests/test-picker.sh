@@ -21,6 +21,8 @@ exit 0
 MOCK
 chmod +x "$mock_bin/systemctl"
 
+mkdir -p "$runtime/shaders" "$mock_bin" "$XDG_STATE_HOME" "$XDG_CACHE_HOME" "$XDG_DATA_HOME" "$XDG_CONFIG_HOME" "$tmp/thumbnails"
+printf "fallback image\n" > "$tmp/thumbnails/fallback.png"
 cat > "$mock_bin/notify-send" <<'MOCK'
 #!/usr/bin/env sh
 exit 0
@@ -38,6 +40,17 @@ export HOME XDG_STATE_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_CONFIG_HOME SYSTEMCT
 export WALLPAPER_RUNTIME="$runtime"
 
 list=$("$repo_root/bin/animated-wallpaper-picker" list)
+cat > "$runtime/shaders/tie-dye.meta" <<'META'
+id=tie-dye
+display_name=Tie Dye Test
+category=Ambient
+description=Metadata test shader.
+author=Test Suite
+thumbnail=tie-dye.png
+sort_order=10
+META
+printf "thumbnail image\n" > "$tmp/thumbnails/tie-dye.png"
+export WALLPAPER_THUMBNAIL_DIR="$tmp/thumbnails"
 case "$list" in
   *tie-dye.fs*motion-halftone.fs*'custom space.fs'*) ;;
   *) echo "unexpected list: $list" >&2; exit 1;;
@@ -45,6 +58,11 @@ esac
 
 current=$("$repo_root/bin/animated-wallpaper-picker" current)
 [ "$current" = "tie-dye.fs" ]
+catalog=$("$repo_root/bin/animated-wallpaper-picker" catalog)
+case "$catalog" in *$'tie-dye.fs\ttie-dye\tTie Dye Test\tAmbient\tMetadata test shader.\tTest Suite\t'*"tie-dye.png"*$'\tbundled\t10'*'custom space.fs'*) ;; *) printf "unexpected catalog: %s\n" "$catalog" >&2; exit 1 ;; esac
+[ "$("$repo_root/bin/animated-wallpaper-picker" origin tie-dye.fs)" = bundled ]
+if "$repo_root/bin/animated-wallpaper-picker" remove tie-dye.fs >/dev/null 2>&1; then printf "bundled shader deletion was accepted\n" >&2; exit 1; fi
+[ -f "$runtime/shaders/tie-dye.fs" ]
 
 "$repo_root/bin/animated-wallpaper-picker" set 'custom space.fs'
 [ "$(cat "$runtime/shader.fs")" = "shader custom" ]
@@ -64,7 +82,7 @@ added=$("$repo_root/bin/animated-wallpaper-picker" user-add "$tmp/user shader.fs
 "$repo_root/bin/animated-wallpaper-picker" set "user shader.fs"
 [ "$(cat "$runtime/shader.fs")" = "shader imported" ]
 [ "$("$repo_root/bin/animated-wallpaper-picker" current)" = "user shader.fs" ]
-"$repo_root/bin/animated-wallpaper-picker" create "copy shader.fs" tie-dye.fs
+"$repo_root/bin/animated-wallpaper-picker" duplicate "copy shader.fs" tie-dye.fs
 [ "$("$repo_root/bin/animated-wallpaper-picker" read "copy shader.fs")" = "shader one" ]
 printf 'edited shader\n' > "$tmp/edited.fs"
 "$repo_root/bin/animated-wallpaper-picker" replace "copy shader.fs" "$tmp/edited.fs"

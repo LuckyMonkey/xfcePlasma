@@ -1,17 +1,14 @@
 [Unit]
-Description=Animated wallpaper renderer behind transparent xfdesktop
+Description=xfcePlasma animated background session
 After=graphical-session.target xfce4-session.target dbus.service
 PartOf=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=3
 
 [Service]
 Type=simple
-WorkingDirectory=%h/.local/lib/tie-dye-wallpaper
 Environment=__GL_YIELD=USLEEP
-ExecStartPre=-/usr/bin/pkill -x xwinwrap
-ExecStartPre=/usr/bin/sleep 1
-ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 /usr/local/bin/xwinwrap -b -s -fs -st -sp -ni -nf -ov -fdt -un -- %h/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper --wid WID
-Restart=on-failure
-RestartSec=2
-
-[Install]
-WantedBy=default.target
+ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 %h/.local/bin/xfce-plasma-background run
+ExecStopPost=%h/.local/bin/xfce-plasma-background cleanup
+KillMode=control-group
+TimeoutStopSec=5

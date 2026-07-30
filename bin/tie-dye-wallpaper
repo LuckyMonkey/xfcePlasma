@@ -10,4 +10,8 @@ fi
 xfce_plasma_export_session_env
 xfce_plasma_mkdirs
 sleep "${TIE_DYE_START_DELAY:-8}"
-systemctl --user start tie-dye-wallpaper-mvp.service >"$XFCE_PLASMA_LOG_DIR/tie-dye-wallpaper.log" 2>&1
+if [ -x "$script_dir/xfce-plasma-background" ]; then
+  "$script_dir/xfce-plasma-background" start >"$XFCE_PLASMA_LOG_DIR/tie-dye-wallpaper.log" 2>&1
+else
+  "$XFCE_PLASMA_BIN_DIR/xfce-plasma-background" start >"$XFCE_PLASMA_LOG_DIR/tie-dye-wallpaper.log" 2>&1
+fi

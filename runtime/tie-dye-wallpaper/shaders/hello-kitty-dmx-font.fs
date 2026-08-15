@@ -6,8 +6,7 @@ uniform float time;
 uniform float fade;
 uniform float fadeTarget;
 uniform sampler2D glyphAtlas;
-uniform float glyphAtlasValid;
-uniform float glyphDebug;
+const float glyphDebug = 0.0;
 
 float hash(vec2 p) {
     return fract(sin(dot(p, vec2(91.7, 171.3))) * 43758.5453);
@@ -86,8 +85,9 @@ float atlasGlyph(vec2 p, int kind) {
 
 float glyph(vec2 p, int kind) {
     float builtIn = fallbackGlyph(p, kind);
-    if (glyphAtlasValid < 0.5) return builtIn;
-    return max(builtIn * 0.18, atlasGlyph(p, kind));
+    float atlasBackground = texture(glyphAtlas, vec2(0.01, 0.01)).r;
+    float atlasValid = 1.0 - smoothstep(0.08, 0.20, atlasBackground);
+    return mix(builtIn, max(builtIn * 0.18, atlasGlyph(p, kind)), atlasValid);
 }
 
 void main() {
@@ -114,11 +114,9 @@ void main() {
     col += vec3(1.0,0.01,0.42) * (exp(-abs(uv.y-scanY)*260.0) + 0.1*exp(-abs(uv.y-scanY)*28.0));
 
     if (glyphDebug > 0.5) {
-        // Deliberately obnoxious diagnostic row: @ # $ & * +.
         for (int i = 0; i < 6; i++) {
             float x = (float(i) - 2.5) * 0.30;
-            float g = glyph((uv - vec2(x, 0.30)) / 1.55, i);
-            col += g * vec3(1.0, 0.10, 0.65) * 4.0;
+            col += glyph((uv - vec2(x, 0.30)) / 1.55, i) * vec3(1.0,0.10,0.65) * 4.0;
         }
     } else {
         for (int i = 0; i < 10; i++) {

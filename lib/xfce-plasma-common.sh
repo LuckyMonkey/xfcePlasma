@@ -45,9 +45,6 @@ xfce_plasma_init() {
   XFCE_PLASMA_RENDERER_DIR=${XFCE_PLASMA_RENDERER_DIR:-$XFCE_PLASMA_PREFIX/lib/tie-dye-wallpaper}
   XFCE_PLASMA_SHADER_DIR=${XFCE_PLASMA_SHADER_DIR:-$XFCE_PLASMA_DATA_DIR/shaders}
   XFCE_PLASMA_USER_SHADER_DIR=${XFCE_PLASMA_USER_SHADER_DIR:-$XFCE_PLASMA_DATA_DIR/user-shaders}
-  # Compatibility path for the currently bundled renderer binary. The audit
-  # found that it reads this legacy state path directly until source parity
-  # work replaces it.
   XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR=${XFCE_PLASMA_RENDERER_COMPAT_STATE_DIR:-$XFCE_PLASMA_XDG_STATE_HOME/tie-dye-wallpaper}
 
   XFCE_PLASMA_DISPLAY=${DISPLAY:-}
@@ -148,16 +145,41 @@ xfce_plasma_config_get() {
   ' "$file"
 }
 
+xfce_plasma_wait_unit_active() {
+  local unit=$1 attempts=${2:-20} delay=${3:-0.1} i
+  for ((i = 0; i < attempts; i++)); do
+    systemctl --user is-active --quiet "$unit" 2>/dev/null && return 0
+    sleep "$delay"
+  done
+  return 1
+}
+
 xfce_plasma_restart_desktop_stack() {
   local wallpaper_unit=${1:-tie-dye-wallpaper-mvp.service}
   local desktop_unit=${2:-xfdesktop-transparent.service}
   local settle_seconds=${WALLPAPER_STACK_SETTLE_SECONDS:-1}
   local status=0
 
-  systemctl --user stop "$desktop_unit" || true
-  systemctl --user restart "$wallpaper_unit" || status=$?
+  systemctl --user stop "$desktop_unit" >/dev/null 2>&1 || true
+
+  if ! systemctl --user restart "$wallpaper_unit"; then
+    printf 'Failed to restart wallpaper service: %s\n' "$wallpaper_unit" >&2
+    status=1
+  elif ! xfce_plasma_wait_unit_active "$wallpaper_unit"; then
+    printf 'Wallpaper service did not become active: %s\n' "$wallpaper_unit" >&2
+    status=1
+  fi
+
   sleep "$settle_seconds"
-  systemctl --user start "$desktop_unit" || status=$?
+
+  if ! systemctl --user start "$desktop_unit"; then
+    printf 'Failed to start desktop icon service: %s\n' "$desktop_unit" >&2
+    status=1
+  elif ! xfce_plasma_wait_unit_active "$desktop_unit"; then
+    printf 'Desktop icon service did not become active: %s\n' "$desktop_unit" >&2
+    status=1
+  fi
+
   return "$status"
 }
 

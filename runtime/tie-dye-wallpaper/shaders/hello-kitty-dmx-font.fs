@@ -60,8 +60,7 @@ float profileKitty(vec2 p,float scan,float bounce,float side){
     c+=laserStroke(p,vec2(0.058,0.175),vec2(0.084,0.228),0.14,scan);
     c+=segmentedEllipse(p,vec2(-0.105,0.176),vec2(0.040,0.030),0.18,scan);c+=segmentedCircle(p,vec2(-0.073,0.175),0.014,0.22,scan);
     c+=laserStroke(p,vec2(0.034,0.110),vec2(0.034,0.086),0.28,scan);
-    c+=laserStroke(p,vec2(0.074,0.070),vec2(0.112,0.070),0.32,scan);
-    c+=laserStroke(p,vec2(0.112,0.070),vec2(0.138,0.058),0.34,scan);
+    c+=laserStroke(p,vec2(0.074,0.070),vec2(0.112,0.070),0.32,scan);c+=laserStroke(p,vec2(0.112,0.070),vec2(0.138,0.058),0.34,scan);
     c+=laserStroke(p,vec2(0.025,0.082),vec2(0.132,0.102),0.36,scan);c+=laserStroke(p,vec2(0.028,0.062),vec2(0.140,0.058),0.40,scan);c+=laserStroke(p,vec2(0.025,0.042),vec2(0.130,0.018),0.44,scan);
     c+=laserStroke(p,vec2(-0.040,0.005),vec2(-0.065,-0.060),0.50,scan);c+=laserStroke(p,vec2(-0.065,-0.060),vec2(-0.090,-0.165),0.56,scan);c+=laserStroke(p,vec2(-0.090,-0.165),vec2(0.075,-0.165),0.62,scan);c+=laserStroke(p,vec2(0.075,-0.165),vec2(0.060,-0.020),0.68,scan);
     c+=laserStroke(p,vec2(0.055,-0.040),vec2(0.145,0.010+0.025*bounce),0.74,scan);c+=laserStroke(p,vec2(-0.020,-0.165),vec2(-0.040,-0.230),0.82,scan);c+=laserStroke(p,vec2(0.040,-0.165),vec2(0.070,-0.225),0.86,scan);
@@ -80,62 +79,121 @@ float fallbackGlyph(vec2 p,int kind){vec2 u=p/vec2(0.24)+0.5;if(u.x<0.0||u.x>=1.
 float atlasGlyph(vec2 p,int kind){float px=float(kind)*80.0+8.0+(p.x+0.12)/0.24*48.0;float py=4.0+(0.12-p.y)/0.24*48.0;float s=texture(glyphAtlas,vec2(px/512.0,py/64.0)).r;return step(abs(p.x),0.18)*step(abs(p.y),0.18)*smoothstep(0.05,0.25,s);}
 float glyph(vec2 p,int kind){float b=fallbackGlyph(p,kind);float atlasBackground=texture(glyphAtlas,vec2(0.01)).r;float valid=1.0-smoothstep(0.08,0.20,atlasBackground);return mix(b,max(b*0.16,atlasGlyph(p,kind)),valid);}
 
-void main(){
-    float H=max(resolution.y,1.0);vec2 uv=(gl_FragCoord.xy-0.5*resolution)/H;float aspect=resolution.x/H;float t=time*0.18;float scan=fract(t*0.80);
-    vec3 col=vec3(0.0015,0.0007,0.007);float horizonY=-0.055;
-    float centerGlow=exp(-dot(uv*vec2(0.72,1.05),uv*vec2(0.72,1.05))*2.35);col+=centerGlow*vec3(0.055,0.006,0.095);
-    col+=exp(-abs(uv.y-horizonY)*34.0)*vec3(0.20,0.006,0.26);col+=exp(-abs(uv.y-horizonY)*125.0)*vec3(0.55,0.025,0.53);
+float symbolMark(vec2 p,int kind,float scan){
+    float s=0.0;
+    if(kind==0){s+=laserStroke(p,vec2(-0.07,0.0),vec2(0.07,0.0),0.1,scan);s+=laserStroke(p,vec2(0.0,-0.07),vec2(0.0,0.07),0.3,scan);}
+    else if(kind==1){s+=laserStroke(p,vec2(-0.06,-0.06),vec2(0.06,0.06),0.2,scan);s+=laserStroke(p,vec2(-0.06,0.06),vec2(0.06,-0.06),0.5,scan);}
+    else if(kind==2){s+=laserStroke(p,vec2(0.0,0.08),vec2(0.07,0.0),0.1,scan);s+=laserStroke(p,vec2(0.07,0.0),vec2(0.0,-0.08),0.3,scan);s+=laserStroke(p,vec2(0.0,-0.08),vec2(-0.07,0.0),0.5,scan);s+=laserStroke(p,vec2(-0.07,0.0),vec2(0.0,0.08),0.7,scan);}
+    else{s+=segmentedCircle(p,vec2(0.0),0.062,0.2,scan);s+=laserStroke(p,vec2(-0.025,0.0),vec2(0.025,0.0),0.6,scan);}
+    return s;
+}
 
-    for(int i=0;i<8;i++){
-        float fi=float(i);float phase=t*(1.45+0.045*fi)+fi*0.71;float side=mod(fi,2.0)<1.0?-1.0:1.0;
-        vec2 a=vec2(side*aspect*(0.10+0.055*mod(fi,4.0)),horizonY+0.01);vec2 b=vec2(-side*(0.18+0.12*sin(phase)),0.72+0.08*sin(phase*1.31));
-        float beam=neonLine(uv,a,b,220.0,30.0);vec3 bc=mod(fi,2.0)<1.0?vec3(1.0,0.006,0.42):vec3(0.02,0.58,1.0);col+=bc*beam*(0.48+0.32*sin(t*5.4+fi));
+void main(){
+    float H=max(resolution.y,1.0);
+    vec2 uv=(gl_FragCoord.xy-0.5*resolution)/H;
+    float aspect=resolution.x/H;
+    float t=time*0.26;
+    float scan=fract(t*1.55);
+    vec3 col=vec3(0.0015,0.0007,0.007);
+    float horizonY=-0.055;
+
+    float centerGlow=exp(-dot(uv*vec2(0.72,1.05),uv*vec2(0.72,1.05))*2.35);
+    col+=centerGlow*vec3(0.055,0.006,0.095);
+    col+=exp(-abs(uv.y-horizonY)*34.0)*vec3(0.20,0.006,0.26);
+    col+=exp(-abs(uv.y-horizonY)*125.0)*vec3(0.62,0.025,0.58);
+
+    // Faster crossing canopy, retaining cyan only as environmental contrast.
+    for(int i=0;i<10;i++){
+        float fi=float(i);
+        float phase=t*(2.10+0.055*fi)+fi*0.63;
+        float side=mod(fi,2.0)<1.0?-1.0:1.0;
+        vec2 a=vec2(side*aspect*(0.08+0.045*mod(fi,5.0)),horizonY+0.01);
+        vec2 b=vec2(-side*(0.20+0.15*sin(phase)),0.72+0.10*sin(phase*1.29));
+        float beam=neonLine(uv,a,b,220.0,30.0);
+        vec3 bc=mod(fi,3.0)==1.0?vec3(0.02,0.58,1.0):vec3(1.0,0.006,0.42);
+        col+=bc*beam*(0.54+0.34*sin(t*7.1+fi));
     }
 
-    for(int i=0;i<14;i++){
-        float fi=float(i);vec2 gp=vec2(mod(-1.25+fi*0.37-t*(0.08+0.015*mod(fi,3.0)),2.5)-1.25,0.28+fract(fi*0.417)*0.38);
-        int kind=clamp(int(floor(hash(vec2(fi,7.0))*6.0)),0,5);float g=glyph((uv-gp)/0.52,kind);vec3 gc=mod(fi,2.0)<1.0?vec3(1.0,0.04,0.55):vec3(0.05,0.45,1.0);col+=g*gc*1.5;
+    // More atmospheric symbols: six atlas glyphs plus procedural +, X,
+    // diamond and ring marks. They move faster but remain behind the dancers.
+    for(int i=0;i<18;i++){
+        float fi=float(i);
+        vec2 gp=vec2(mod(-1.35+fi*0.31-t*(0.16+0.018*mod(fi,4.0)),2.70)-1.35,0.27+fract(fi*0.417)*0.40);
+        int kind=clamp(int(floor(hash(vec2(fi,7.0))*6.0)),0,5);
+        float g=glyph((uv-gp)/0.48,kind);
+        vec3 gc=mod(fi,4.0)==1.0?vec3(0.20,0.34,1.0):vec3(1.0,0.03,0.60);
+        col+=g*gc*1.65;
+    }
+    for(int i=0;i<12;i++){
+        float fi=float(i);
+        vec2 sp=vec2(mod(1.35-fi*0.47+t*(0.12+0.02*mod(fi,3.0)),2.70)-1.35,0.31+fract(fi*0.283)*0.33);
+        int kind=int(mod(fi,4.0));
+        float sm=symbolMark((uv-sp)/0.62,kind,fract(scan+fi*0.09));
+        col+=sm*vec3(1.0,0.025,0.58)*0.34;
     }
 
     if(uv.y<horizonY){
-        float depth=max(0.018,horizonY-uv.y);float perspective=0.25/depth;vec2 fuv=vec2(uv.x*perspective,perspective+t*0.72);vec2 cell=floor(fuv);vec2 local=abs(fract(fuv)-0.5);
-        float checker=mod(cell.x+cell.y,2.0);float inversion=step(0.0,sin(t*3.5));float alt=abs(checker-inversion);
-        vec3 dark=vec3(0.003,0.001,0.010),hot=vec3(0.28,0.003,0.13);vec3 fc=mix(dark,hot,alt);
-        float seam=exp(-min(0.5-local.x,0.5-local.y)*48.0);vec3 sc=mix(vec3(0.95,0.015,0.48),vec3(0.07,0.34,0.95),0.5+0.5*sin(cell.y*0.72+t));
-        fc+=seam*sc*0.45;col=mix(col,fc,0.95);col+=exp(-abs(uv.x)*2.2)*exp(-depth*7.5)*vec3(0.18,0.006,0.22);
+        float depth=max(0.018,horizonY-uv.y);
+        float perspective=0.25/depth;
+        vec2 fuv=vec2(uv.x*perspective,perspective+t*1.02);
+        vec2 cell=floor(fuv);
+        vec2 local=abs(fract(fuv)-0.5);
+        float checker=mod(cell.x+cell.y,2.0);
+        float inversion=step(0.0,sin(t*5.4));
+        float alt=abs(checker-inversion);
+        vec3 dark=vec3(0.003,0.001,0.010),hot=vec3(0.34,0.003,0.15);
+        vec3 fc=mix(dark,hot,alt);
+        float seam=exp(-min(0.5-local.x,0.5-local.y)*48.0);
+        vec3 sc=mix(vec3(0.98,0.015,0.50),vec3(0.07,0.34,0.95),0.5+0.5*sin(cell.y*0.88+t*1.4));
+        fc+=seam*sc*0.48;
+        col=mix(col,fc,0.95);
+        col+=exp(-abs(uv.x)*2.2)*exp(-depth*7.5)*vec3(0.20,0.006,0.25);
     }
 
-    // Riverdance procession: a full row scrolls right-to-left while every cat
-    // cycles front -> right profile -> back -> left profile. Phase offsets keep
-    // the line lively instead of producing synchronized clones.
-    const int CAT_COUNT=9;
-    float processionSpan=aspect+0.85;
-    float march=mod(t*0.105,1.0)*processionSpan;
-    float spin=t*1.05;
+    // Choreographed riverdance line. Motion is step/hold/step rather than a
+    // conveyor belt: all dancers advance on one shared clock, odd/even cats
+    // mirror their bounce, and rotation uses a clean alternating formation.
+    const int CAT_COUNT=8;
+    float processionSpan=aspect+0.95;
+    float spacing=processionSpan/float(CAT_COUNT);
+    float walkClock=t*3.0;
+    float walkIndex=floor(walkClock);
+    float walkPhase=fract(walkClock);
+    float stepEase=smoothstep(0.10,0.58,walkPhase);
+    float marchDistance=mod((walkIndex+stepEase)*spacing*0.34,processionSpan);
+    float spin=t*5.0;
+
     for(int i=0;i<CAT_COUNT;i++){
         float fi=float(i);
-        float spacing=processionSpan/float(CAT_COUNT-1);
-        float x=aspect*0.5+0.42-fi*spacing-march;
+        float x=aspect*0.5+0.48-fi*spacing-marchDistance;
         x=mod(x+processionSpan*0.5,processionSpan)-processionSpan*0.5;
 
-        float dancePhase=fi*0.82;
-        float bounce=sin(t*6.2+dancePhase);
-        float kick=sin(t*6.2+dancePhase+1.57);
-        float y=0.006+0.012*bounce;
-        float scale=0.43+0.018*sin(fi*1.9);
+        float formation=mod(fi,2.0);
+        float dancePhase=fract(walkPhase+0.5*formation);
+        float bounce=sin(dancePhase*2.0*PI);
+        float kick=sin(dancePhase*4.0*PI);
+        float y=0.005+0.014*max(bounce,0.0);
+        float scale=0.425;
 
-        float frame=floor(mod(spin+fi*0.63,4.0));
-        float localScan=fract(scan+fi*0.137);
+        // Faster spin, but choreographed: neighboring dancers are exactly one
+        // quarter-turn apart rather than drifting through arbitrary phases.
+        float frame=floor(mod(spin+formation,4.0));
+        float localScan=fract(scan+0.08*formation);
         vec2 kp=(uv-vec2(x,y))/scale;
-        kp.y+=0.010*kick;
+        kp.x+=0.010*kick*formation-0.010*kick*(1.0-formation);
+        kp.y+=0.012*kick;
         float k=kittyFrame(kp,frame,localScan,bounce);
 
-        vec3 shell=mod(i,3)==1?vec3(0.14,0.48,1.0):vec3(1.0,0.02,0.58);
-        col+=k*vec3(0.20,0.008,0.46)*0.50;
-        col+=k*shell*0.78;
-        col+=smoothstep(0.92,1.85,k)*vec3(1.0,0.56,0.94)*0.28;
+        // Cats stay pink. Environmental cyan remains confined to lasers/glyphs.
+        col+=k*vec3(0.22,0.006,0.44)*0.52;
+        col+=k*vec3(1.00,0.018,0.58)*0.84;
+        col+=smoothstep(0.90,1.82,k)*vec3(1.0,0.62,0.95)*0.30;
     }
 
-    float vignette=smoothstep(1.2,0.25,length(uv*vec2(0.72,0.95)));col*=0.72+0.28*vignette;col*=0.96+0.04*sin(t*3.2);
-    float f=clamp(fade,0.0,1.0);col=mix(vec3(fadeTarget),col,f);finalColor=vec4(clamp(col,0.0,1.0),1.0);
+    float vignette=smoothstep(1.2,0.25,length(uv*vec2(0.72,0.95)));
+    col*=0.72+0.28*vignette;
+    col*=0.95+0.05*sin(t*4.8);
+    float f=clamp(fade,0.0,1.0);
+    col=mix(vec3(fadeTarget),col,f);
+    finalColor=vec4(clamp(col,0.0,1.0),1.0);
 }

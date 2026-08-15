@@ -35,5 +35,12 @@ wait_for_stable_display() {
   done
 }
 
+stack_log="$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log"
 wait_for_stable_display
-xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log" 2>&1 || true
+
+if ! xfce_plasma_restart_desktop_stack \
+  tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$stack_log" 2>&1; then
+  printf 'xfcePlasma desktop stack failed to start. Log: %s\n' "$stack_log" >&2
+  tail -n 20 "$stack_log" >&2 2>/dev/null || true
+  exit 1
+fi

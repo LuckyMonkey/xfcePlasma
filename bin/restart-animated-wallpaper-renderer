@@ -11,8 +11,7 @@ xfce_plasma_export_session_env
 xfce_plasma_mkdirs
 
 log_file="$XFCE_PLASMA_LOG_DIR/tie-dye-wallpaper.log"
-if ! xfce_plasma_restart_desktop_stack \
-  tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$log_file" 2>&1; then
+if ! xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$log_file" 2>&1; then
   printf 'xfcePlasma restart failed. Log: %s\n' "$log_file" >&2
   tail -n 20 "$log_file" >&2 2>/dev/null || true
   exit 1

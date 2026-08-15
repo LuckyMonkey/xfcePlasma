@@ -107,7 +107,14 @@ run_background() {
   [ -n "$XWINWRAP" ] && [ -x "$XWINWRAP" ] || { printf 'xwinwrap is unavailable\n' >&2; return 1; }
   xfce_plasma_performance_export
   write_backend_state starting "$type" "$id" "$backend" 0 ""
-  exec "$XWINWRAP" -b -s -fs -st -sp -ni -nf -ov -fdt -un -- "$SELF" backend-run WID
+  # Keep a supervisor in the service process slot so a vanished renderer is a failure.
+  trap 'exit 143' HUP INT TERM
+  "$XWINWRAP" -b -s -fs -st -sp -ni -nf -ov -fdt -un -- "$SELF" backend-run WID
+  status=$?
+  if [ "$status" -eq 0 ] && [ "$type" = shader ] && [ "$(backend_state_value state 2>/dev/null || true)" = running ]; then
+    status=1
+  fi
+  exit "$status"
 }
 
 backend_run() {
@@ -330,7 +337,6 @@ select_video() {
   select_media_backend automatic >/dev/null
   id=$(add_video "$path" "$requested_id")
   xfce_plasma_source_write_active video "$id"
-  restart_background_stack
   printf '%s\n' "$id"
 }
 
@@ -340,7 +346,6 @@ activate_source() {
   xfce_plasma_source_validate_file "$definition"
   type=$(xfce_plasma_source_value "$definition" type)
   xfce_plasma_source_write_active "$type" "$id"
-  restart_background_stack
 }
 
 remove_source() {

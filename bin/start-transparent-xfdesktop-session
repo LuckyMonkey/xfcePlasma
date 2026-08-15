@@ -26,4 +26,4 @@ fi
 systemctl --user daemon-reload
 xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 2
 xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s true
-xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service
+exec "$XFCE_PLASMA_XFDESKTOP_DIR/bin/xfdesktop" --disable-wm-check

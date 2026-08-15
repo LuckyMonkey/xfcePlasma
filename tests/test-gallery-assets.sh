@@ -28,7 +28,7 @@ for shader in "$shader_dir"/*.fs; do
   [ "$id" = "$base" ]
   [ -n "$display" ]
   [ -n "$description" ]
-  case "$category" in Ambient|Graphic|Scenic|Experimental) ;; *) printf 'invalid category: %s\n' "$category" >&2; exit 1 ;; esac
+  case "$category" in Ambient|Graphic|Scenic|Experimental|Diagnostics) ;; *) printf 'invalid category: %s\n' "$category" >&2; exit 1 ;; esac
   case "$order" in ''|*[!0-9]*) printf 'invalid sort order: %s\n' "$order" >&2; exit 1 ;; esac
   [ "$thumbnail" = "$id.png" ]
   [ -r "$thumbnail_dir/$thumbnail" ]
@@ -37,7 +37,7 @@ for shader in "$shader_dir"/*.fs; do
   printf '%s\n' "$order" >> "$tmp/orders"
   shader_count=$((shader_count + 1))
 done
-[ "$shader_count" -eq 12 ]
+[ "$shader_count" -eq 14 ]
 [ "$(sort -u "$tmp/ids" | wc -l)" -eq "$shader_count" ]
 [ "$(sort -u "$tmp/orders" | wc -l)" -eq "$shader_count" ]
 if rg -i 'stunning|immersive|next-generation' "$shader_dir"/*.meta; then

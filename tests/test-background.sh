@@ -74,7 +74,10 @@ if grep -q 'restart test-background.service' "$SYSTEMCTL_LOG"; then
   exit 1
 fi
 
-"$background" run
+if "$background" run; then
+  printf 'shader backend exit was not propagated\n' >&2
+  exit 1
+fi
 grep -qx -- '--wid 0x123abc' "$RENDERER_LOG"
 grep -qx 'type=shader' "$XDG_RUNTIME_DIR/xfce-plasma/backend.state"
 grep -qx 'backend=raylib' "$XDG_RUNTIME_DIR/xfce-plasma/backend.state"

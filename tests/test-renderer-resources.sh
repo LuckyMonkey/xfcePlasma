@@ -43,7 +43,7 @@ require 'Restart=on-failure' "$desktop_service" 'desktop icon service crash reco
 require 'After=.*tie-dye-wallpaper-mvp.service' "$desktop_service" 'desktop icon service no longer orders after the wallpaper service'
 require 'Restart=on-failure' "$game_service" 'game mode guard crash recovery disappeared'
 require 'xfce_plasma_wait_unit_active' "$common" 'desktop stack restart no longer verifies service startup'
-reject '/home/freezer' "$renderer" 'personal home path reintroduced into renderer'
+reject "$(printf '/home/%s' freezer)" "$renderer" 'personal home path reintroduced into renderer'
 reject '#define ACTIVE_SHADER_PATH "shader\.fs"' "$renderer" 'renderer reverted to cwd-only shader lookup'
 reject 'glyphAtlasValid' "$shader" 'DMX shader accidentally depends on an unwired atlas-validity uniform'
 

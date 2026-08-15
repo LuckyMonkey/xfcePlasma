@@ -73,7 +73,7 @@ float kittyFrame(vec2 p,float frame,float scan,float bounce){
 int glyphRow(int kind,int row){if(kind==0){int r[7]=int[7](14,17,23,21,23,16,15);return r[row];}if(kind==1){int r[7]=int[7](10,31,10,10,31,10,10);return r[row];}if(kind==2){int r[7]=int[7](14,20,30,5,15,5,30);return r[row];}if(kind==3){int r[7]=int[7](12,18,20,8,21,18,13);return r[row];}if(kind==4){int r[7]=int[7](4,21,14,31,14,21,4);return r[row];}int r[7]=int[7](4,4,4,31,4,4,4);return r[row];}
 float fallbackGlyph(vec2 p,int kind){vec2 u=p/vec2(0.24)+0.5;if(u.x<0.0||u.x>=1.0||u.y<0.0||u.y>=1.0)return 0.0;vec2 g=vec2(u.x*5.0,(1.0-u.y)*7.0);int c=clamp(int(floor(g.x)),0,4),r=clamp(int(floor(g.y)),0,6);float e=float((glyphRow(kind,r)>>(4-c))&1);vec2 cell=fract(g)-0.5;return e*(1.0-smoothstep(0.30,0.48,max(abs(cell.x),abs(cell.y))));}
 float atlasGlyph(vec2 p,int kind){float px=float(kind)*80.0+8.0+(p.x+0.12)/0.24*48.0;float py=4.0+(0.12-p.y)/0.24*48.0;float s=texture(glyphAtlas,vec2(px/512.0,py/64.0)).r;return step(abs(p.x),0.18)*step(abs(p.y),0.18)*smoothstep(0.05,0.25,s);}
-float glyph(vec2 p,int kind){float b=fallbackGlyph(p,kind);float bg=texture(glyphAtlas,vec2(0.01)).r;float valid=1.0-smoothstep(0.08,0.20,bg);return mix(b,max(b*0.16,atlasGlyph(p,kind)),valid);}
+float glyph(vec2 p,int kind){float b=fallbackGlyph(p,kind);float atlasBackground=texture(glyphAtlas,vec2(0.01)).r;float valid=1.0-smoothstep(0.08,0.20,atlasBackground);return mix(b,max(b*0.16,atlasGlyph(p,kind)),valid);}
 
 void main(){
     float H=max(resolution.y,1.0);vec2 uv=(gl_FragCoord.xy-0.5*resolution)/H;float aspect=resolution.x/H;float t=time*0.18;float bounce=sin(t*6.2831*0.52);float scan=fract(t*0.80);

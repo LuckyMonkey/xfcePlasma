@@ -24,52 +24,71 @@ float neonLine(vec2 p, vec2 a, vec2 b, float core, float halo) {
     return exp(-d * core) + 0.22 * exp(-d * halo);
 }
 
+float ellipseRing(vec2 p, vec2 center, vec2 radius, float width) {
+    vec2 q = (p - center) / radius;
+    float d = abs(length(q) - 1.0);
+    return exp(-d * width);
+}
+
+float circleGlow(vec2 p, vec2 center, float radius, float sharpness) {
+    return exp(-abs(length(p - center) - radius) * sharpness);
+}
+
 float trace(vec2 p, vec2 a, vec2 b, float order, float beat) {
     float d = lineDistance(p, a, b);
     float scan = fract(beat * 11.0);
-    float head = 0.22 + 0.78 * smoothstep(0.34, 0.0, abs(scan - order));
-    return head * (exp(-d * 275.0) + 0.16 * exp(-d * 42.0));
+    float head = 0.28 + 0.72 * smoothstep(0.34, 0.0, abs(scan - order));
+    return head * (exp(-d * 300.0) + 0.15 * exp(-d * 46.0));
 }
 
-float tracedCat(vec2 p, float beat) {
+float helloKitty(vec2 p, float beat) {
     float bounce = sin(beat * 2.0 * PI);
-    float sway = 0.018 * sin(beat * 2.0 * PI + 1.2);
-    p.x += sway;
-    p.y -= 0.014 * bounce;
+    float sway = sin(beat * 2.0 * PI + 1.2);
+    p.x += 0.012 * sway;
+    p.y -= 0.010 * bounce;
 
     float c = 0.0;
-    // Head and ears.
-    c += trace(p, vec2(-0.09, 0.10), vec2(-0.12, 0.22), 0.00, beat);
-    c += trace(p, vec2(-0.12, 0.22), vec2(-0.04, 0.17), 0.07, beat);
-    c += trace(p, vec2(-0.09, 0.10), vec2(-0.07, 0.01), 0.14, beat);
-    c += trace(p, vec2(-0.07, 0.01), vec2( 0.07, 0.01), 0.21, beat);
-    c += trace(p, vec2( 0.07, 0.01), vec2( 0.09, 0.10), 0.28, beat);
-    c += trace(p, vec2( 0.09, 0.10), vec2( 0.12, 0.22), 0.35, beat);
-    c += trace(p, vec2( 0.12, 0.22), vec2( 0.04, 0.17), 0.42, beat);
 
-    // Bow.
-    c += trace(p, vec2(-0.07, 0.14), vec2(-0.18, 0.19), 0.49, beat);
-    c += trace(p, vec2(-0.18, 0.19), vec2(-0.22, 0.12), 0.56, beat);
-    c += trace(p, vec2(-0.22, 0.12), vec2(-0.16, 0.08), 0.63, beat);
-    c += trace(p, vec2(-0.16, 0.08), vec2(-0.07, 0.14), 0.70, beat);
+    // Head: deliberately wider and rounder so it reads as Hello Kitty first,
+    // not a generic triangular cat. Ears are short and sit on the oval.
+    c += ellipseRing(p, vec2(0.0, 0.105), vec2(0.145, 0.112), 110.0);
+    c += trace(p, vec2(-0.112, 0.160), vec2(-0.090, 0.245), 0.02, beat);
+    c += trace(p, vec2(-0.090, 0.245), vec2(-0.035, 0.202), 0.07, beat);
+    c += trace(p, vec2( 0.112, 0.160), vec2( 0.090, 0.245), 0.12, beat);
+    c += trace(p, vec2( 0.090, 0.245), vec2( 0.035, 0.202), 0.17, beat);
 
-    // Face and whiskers.
-    c += trace(p, vec2(-0.035, 0.10), vec2(-0.035, 0.08), 0.77, beat);
-    c += trace(p, vec2( 0.035, 0.10), vec2( 0.035, 0.08), 0.81, beat);
-    c += trace(p, vec2(-0.012, 0.06), vec2( 0.012, 0.06), 0.85, beat);
-    c += trace(p, vec2(-0.025, 0.055), vec2(-0.13, 0.04), 0.89, beat);
-    c += trace(p, vec2( 0.025, 0.055), vec2( 0.13, 0.04), 0.93, beat);
+    // Bow: two rounded loops with a bright knot, anchored on the left ear.
+    c += ellipseRing(p, vec2(-0.135, 0.176), vec2(0.050, 0.034), 95.0);
+    c += ellipseRing(p, vec2(-0.064, 0.174), vec2(0.042, 0.030), 100.0);
+    c += circleGlow(p, vec2(-0.101, 0.174), 0.016, 120.0);
 
-    // Dress, arms, legs, tail.
-    c += trace(p, vec2(-0.07,  0.00), vec2(-0.12, -0.14), 0.08, beat);
-    c += trace(p, vec2(-0.12, -0.14), vec2( 0.12, -0.14), 0.16, beat);
-    c += trace(p, vec2( 0.12, -0.14), vec2( 0.07,  0.00), 0.24, beat);
-    c += trace(p, vec2(-0.07, -0.01), vec2(-0.19, 0.07 + 0.04 * bounce), 0.32, beat);
-    c += trace(p, vec2( 0.07, -0.01), vec2( 0.19, 0.07 + 0.04 * bounce), 0.40, beat);
-    c += trace(p, vec2(-0.035, -0.14), vec2(-0.07, -0.23 + 0.03 * bounce), 0.48, beat);
-    c += trace(p, vec2( 0.035, -0.14), vec2( 0.07, -0.23 - 0.03 * bounce), 0.56, beat);
-    c += trace(p, vec2( 0.10, -0.09), vec2( 0.20, -0.13 + 0.03 * bounce), 0.64, beat);
-    c += trace(p, vec2( 0.20, -0.13 + 0.03 * bounce), vec2(0.24, -0.07), 0.72, beat);
+    // Face: small vertical eyes, low nose, long whiskers.
+    c += trace(p, vec2(-0.050, 0.115), vec2(-0.050, 0.087), 0.24, beat);
+    c += trace(p, vec2( 0.050, 0.115), vec2( 0.050, 0.087), 0.28, beat);
+    c += trace(p, vec2(-0.012, 0.068), vec2( 0.012, 0.068), 0.32, beat);
+    c += trace(p, vec2(-0.046, 0.086), vec2(-0.155, 0.108), 0.36, beat);
+    c += trace(p, vec2(-0.048, 0.068), vec2(-0.160, 0.064), 0.40, beat);
+    c += trace(p, vec2(-0.044, 0.050), vec2(-0.150, 0.025), 0.44, beat);
+    c += trace(p, vec2( 0.046, 0.086), vec2( 0.155, 0.108), 0.48, beat);
+    c += trace(p, vec2( 0.048, 0.068), vec2( 0.160, 0.064), 0.52, beat);
+    c += trace(p, vec2( 0.044, 0.050), vec2( 0.150, 0.025), 0.56, beat);
+
+    // Simple dress/body with a narrower waist and wider hem.
+    c += trace(p, vec2(-0.058, 0.005), vec2(-0.080,-0.060), 0.60, beat);
+    c += trace(p, vec2(-0.080,-0.060), vec2(-0.125,-0.165), 0.64, beat);
+    c += trace(p, vec2(-0.125,-0.165), vec2( 0.125,-0.165), 0.68, beat);
+    c += trace(p, vec2( 0.125,-0.165), vec2( 0.080,-0.060), 0.72, beat);
+    c += trace(p, vec2( 0.080,-0.060), vec2( 0.058, 0.005), 0.76, beat);
+
+    // Arms and dancing legs. Keep them short enough that the head stays dominant.
+    c += trace(p, vec2(-0.068,-0.035), vec2(-0.175, 0.025 + 0.030 * bounce), 0.80, beat);
+    c += trace(p, vec2( 0.068,-0.035), vec2( 0.175, 0.025 - 0.025 * bounce), 0.84, beat);
+    c += trace(p, vec2(-0.042,-0.165), vec2(-0.074,-0.235 + 0.020 * bounce), 0.88, beat);
+    c += trace(p, vec2( 0.042,-0.165), vec2( 0.084,-0.225 - 0.020 * bounce), 0.92, beat);
+
+    // Tiny side tail, visually subordinate to the bow/face.
+    c += trace(p, vec2(0.108,-0.125), vec2(0.178,-0.145), 0.95, beat);
+    c += trace(p, vec2(0.178,-0.145), vec2(0.202,-0.098), 0.98, beat);
     return c;
 }
 
@@ -125,7 +144,6 @@ void main() {
     float t = time * 0.18;
     float beat = fract(t * 0.52);
 
-    // Deep club-space backdrop with a subtle center-stage glow.
     vec3 col = vec3(0.0015, 0.0008, 0.007);
     float centerGlow = exp(-dot(uv * vec2(0.78, 1.15), uv * vec2(0.78, 1.15)) * 2.7);
     col += centerGlow * vec3(0.050, 0.006, 0.090);
@@ -135,11 +153,9 @@ void main() {
     col += horizon * vec3(0.20, 0.006, 0.26);
     col += exp(-abs(uv.y - horizonY) * 120.0) * vec3(0.46, 0.02, 0.45);
 
-    // Faint vertical atmospheric bands keep the empty upper area alive.
     float haze = 0.5 + 0.5 * sin(uv.x * 19.0 + sin(uv.y * 7.0 + t) * 1.3);
     col += vec3(0.012, 0.002, 0.028) * haze * smoothstep(-0.08, 0.75, uv.y);
 
-    // Crossing laser canopy: alternating cyan/magenta beams with a moving origin.
     for (int i = 0; i < 6; i++) {
         float fi = float(i);
         float phase = t * (1.75 + 0.07 * fi) + fi * 0.83;
@@ -151,13 +167,11 @@ void main() {
         col += beamColor * beam * shutter * 0.78;
     }
 
-    // A scanning hot line over the back wall.
     float scanY = 0.30 + 0.22 * sin(t * 2.15);
     float scanCore = exp(-abs(uv.y - scanY) * 250.0);
     float scanHalo = exp(-abs(uv.y - scanY) * 30.0);
     col += vec3(1.0, 0.02, 0.48) * (scanCore + 0.08 * scanHalo);
 
-    // Sparse drifting glyph wall. Each glyph gets a dim violet shadow and hot face.
     for (int i = 0; i < 11; i++) {
         float fi = float(i);
         float lane = fract(fi * 0.417);
@@ -173,50 +187,55 @@ void main() {
         col += g * palette(fi * 1.7 + t) * 2.25 * pulse;
     }
 
-    // Perspective dance floor. Dark near-black tiles with animated neon seams.
+    // Bring back the original alternating checkerboard identity, but retain
+    // the improved perspective/depth. The whole floor inverts on a slow beat.
     if (uv.y < horizonY) {
         float depth = max(0.018, horizonY - uv.y);
         float perspective = 0.26 / depth;
         vec2 floorUV = vec2(uv.x * perspective, perspective + t * 0.72);
         vec2 cell = floor(floorUV);
         vec2 local = abs(fract(floorUV) - 0.5);
+
         float checker = mod(cell.x + cell.y, 2.0);
-        vec3 tileA = vec3(0.006, 0.002, 0.016);
-        vec3 tileB = vec3(0.040, 0.003, 0.050);
-        vec3 floorColor = mix(tileA, tileB, checker);
-        float seam = exp(-min(0.5 - local.x, 0.5 - local.y) * 46.0);
-        float depthFade = smoothstep(0.0, 0.42, depth);
-        vec3 seamColor = mix(vec3(0.72, 0.015, 0.48), vec3(0.06, 0.36, 0.90), 0.5 + 0.5 * sin(cell.y * 0.7 + t));
-        floorColor += seam * seamColor * (0.30 + 0.40 * depthFade);
-        col = mix(col, floorColor, 0.92);
+        float inversion = step(0.0, sin(t * 3.5));
+        float alternating = abs(checker - inversion);
 
-        // Horizon reflection ties the floor to the laser wall.
-        col += exp(-abs(uv.x) * 2.4) * exp(-depth * 7.5) * vec3(0.16, 0.006, 0.19);
+        vec3 tileDark = vec3(0.004, 0.001, 0.012);
+        vec3 tileHot  = vec3(0.22, 0.003, 0.105);
+        vec3 floorColor = mix(tileDark, tileHot, alternating);
+
+        float seam = exp(-min(0.5 - local.x, 0.5 - local.y) * 50.0);
+        float depthFade = smoothstep(0.0, 0.40, depth);
+        vec3 seamColor = mix(vec3(0.95, 0.015, 0.48), vec3(0.08, 0.34, 0.95), 0.5 + 0.5 * sin(cell.y * 0.72 + t));
+        floorColor += seam * seamColor * (0.24 + 0.38 * depthFade);
+
+        // Slightly preserve the alternating blocks toward the horizon instead
+        // of washing them out into uniform grid lines.
+        float floorMix = 0.94 - 0.12 * smoothstep(0.0, 0.25, depth);
+        col = mix(col, floorColor, floorMix);
+        col += exp(-abs(uv.x) * 2.4) * exp(-depth * 7.5) * vec3(0.15, 0.005, 0.18);
     }
 
-    // Dancing cat procession with depth-separated halo and white-hot laser core.
-    float span = aspect * 0.92;
-    float scroll = mod(t * 0.135, 1.0) * span;
-    for (int i = 0; i < 6; i++) {
+    // Fewer, larger cats are much easier to read than six small wire figures.
+    float span = aspect * 0.96;
+    float scroll = mod(t * 0.125, 1.0) * span;
+    for (int i = 0; i < 5; i++) {
         float fi = float(i);
-        float base = -aspect * 0.46 + fi * aspect * 0.184;
+        float base = -aspect * 0.48 + fi * aspect * 0.24;
         float x = mod(base - scroll + span * 0.5, span) - span * 0.5;
-        vec2 catUV = (uv - vec2(x, -0.005)) / 0.40;
-        float cat = tracedCat(catUV, beat + fi * 0.018);
-        float catPulse = 0.88 + 0.12 * sin(t * 7.4 + fi);
-        col += cat * vec3(0.30, 0.008, 0.42) * 1.25;
-        col += cat * vec3(1.00, 0.055, 0.58) * 0.92 * catPulse;
-        col += cat * cat * vec3(1.00, 0.58, 0.86) * 0.52;
+        vec2 catUV = (uv - vec2(x, 0.005)) / 0.47;
+        float cat = helloKitty(catUV, beat + fi * 0.021);
+
+        // Violet bloom under a pink shell and almost-white center stroke.
+        float halo = min(cat, 2.0);
+        col += halo * vec3(0.24, 0.008, 0.50) * 0.56;
+        col += cat * vec3(1.00, 0.018, 0.55) * 0.72;
+        col += smoothstep(0.72, 1.75, cat) * vec3(1.0, 0.42, 0.88) * 0.36;
     }
 
-    // Gentle CRT/club texture and vignette, deliberately restrained.
-    float scanTexture = 0.985 + 0.015 * sin(gl_FragCoord.y * PI);
-    col *= scanTexture;
-    float vignette = 1.0 - smoothstep(0.55, 1.18, length(uv / vec2(max(aspect, 1.0), 1.0)));
-    col *= 0.76 + 0.24 * vignette;
-
-    // Small rhythmic exposure lift instead of hard flashing.
-    col *= 0.94 + 0.06 * smoothstep(0.72, 1.0, sin(t * 2.0 * PI) * 0.5 + 0.5);
+    float vignette = smoothstep(1.15, 0.28, length(uv * vec2(0.72, 0.96)));
+    col *= 0.72 + 0.28 * vignette;
+    col *= 0.96 + 0.04 * sin(t * 3.2);
 
     float f = clamp(fade, 0.0, 1.0);
     col = mix(vec3(fadeTarget), col, f);

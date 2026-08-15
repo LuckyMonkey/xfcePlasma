@@ -33,6 +33,12 @@ for unit in "$wallpaper" "$desktop" "$guard"; do
 done
 
 require 'xfce_plasma_wait_unit_active' "$common" 'stack restart no longer checks unit activation'
+require 'xfce_plasma_backend_visible' "$common" 'backend X11 visibility check disappeared'
+require 'xfce_plasma_wait_background_visible' "$common" 'stack readiness no longer waits for a visible backend'
+require 'xwininfo -id' "$common" 'viewable X11 window verification disappeared'
+require 'Map State:' "$common" 'X11 map-state verification disappeared'
+require 'kill -0' "$common" 'backend readiness no longer verifies renderer process liveness'
+require 'active but no viewable backend window appeared' "$common" 'visible-backend failure lost useful diagnostics'
 require 'Wallpaper service did not become active' "$common" 'wallpaper startup failure lost useful diagnostics'
 require 'Desktop icon service did not become active' "$common" 'desktop startup failure lost useful diagnostics'
 

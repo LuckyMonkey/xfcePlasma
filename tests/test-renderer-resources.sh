@@ -7,6 +7,7 @@ shader="$repo_root/runtime/tie-dye-wallpaper/shaders/hello-kitty-dmx-font.fs"
 diagnostic="$repo_root/runtime/tie-dye-wallpaper/shaders/glyph-diagnostic.fs"
 wallpaper_service="$repo_root/systemd/user/tie-dye-wallpaper-mvp.service"
 desktop_service="$repo_root/systemd/user/xfdesktop-transparent.service"
+game_service="$repo_root/systemd/user/game-mode-guard.service"
 common="$repo_root/lib/xfce-plasma-common.sh"
 
 require() {
@@ -40,6 +41,7 @@ require 'Restart=on-failure' "$wallpaper_service" 'wallpaper service crash recov
 require 'KillMode=control-group' "$wallpaper_service" 'wallpaper service no longer owns its backend process group'
 require 'Restart=on-failure' "$desktop_service" 'desktop icon service crash recovery disappeared'
 require 'After=.*tie-dye-wallpaper-mvp.service' "$desktop_service" 'desktop icon service no longer orders after the wallpaper service'
+require 'Restart=on-failure' "$game_service" 'game mode guard crash recovery disappeared'
 require 'xfce_plasma_wait_unit_active' "$common" 'desktop stack restart no longer verifies service startup'
 reject '/home/freezer' "$renderer" 'personal home path reintroduced into renderer'
 reject '#define ACTIVE_SHADER_PATH "shader\.fs"' "$renderer" 'renderer reverted to cwd-only shader lookup'

@@ -18,6 +18,8 @@
 #define XFCE_PLASMA_VERSION "unknown"
 #endif
 
+#define RELOAD_FADE_SECONDS 0.35f
+
 static volatile sig_atomic_t fade_out_requested = 0;
 static volatile sig_atomic_t terminate_requested = 0;
 
@@ -46,6 +48,74 @@ static unsigned int positive_dimension(int value) {
     return value > 0 ? (unsigned int)value : 1U;
 }
 
+static bool copy_path(char *buffer, size_t capacity, const char *value) {
+    int written;
+    if (!buffer || capacity == 0U || !value || !*value) return false;
+    written = snprintf(buffer, capacity, "%s", value);
+    return written >= 0 && (size_t)written < capacity;
+}
+
+static bool executable_directory(char *buffer, size_t capacity) {
+    char executable[PATH_MAX];
+    ssize_t length;
+    char *slash;
+
+    if (!buffer || capacity == 0U) return false;
+    length = readlink("/proc/self/exe", executable, sizeof(executable) - 1U);
+    if (length <= 0 || (size_t)length >= sizeof(executable)) return false;
+    executable[length] = '\0';
+    slash = strrchr(executable, '/');
+    if (!slash) return false;
+    if (slash == executable) slash[1] = '\0';
+    else *slash = '\0';
+    return copy_path(buffer, capacity, executable);
+}
+
+static bool sibling_path(char *buffer, size_t capacity, const char *name) {
+    char directory[PATH_MAX];
+    int written;
+    if (!name || !*name || !executable_directory(directory, sizeof(directory))) return false;
+    written = snprintf(buffer, capacity, "%s/%s", directory, name);
+    return written >= 0 && (size_t)written < capacity;
+}
+
+static const char *path_basename(const char *path) {
+    const char *slash;
+    if (!path) return "";
+    slash = strrchr(path, '/');
+    return slash ? slash + 1 : path;
+}
+
+static bool path_directory(char *buffer, size_t capacity, const char *path) {
+    const char *slash;
+    size_t length;
+
+    if (!buffer || capacity == 0U || !path || !*path) return false;
+    slash = strrchr(path, '/');
+    if (!slash) return copy_path(buffer, capacity, ".");
+    if (slash == path) return copy_path(buffer, capacity, "/");
+    length = (size_t)(slash - path);
+    if (length >= capacity) return false;
+    memcpy(buffer, path, length);
+    buffer[length] = '\0';
+    return true;
+}
+
+static bool resolve_shader_path(char *buffer, size_t capacity) {
+    const char *explicit_path = getenv("WALLPAPER_SHADER_FILE");
+    char candidate[PATH_MAX];
+
+    if (explicit_path && *explicit_path) return copy_path(buffer, capacity, explicit_path);
+
+    if (sibling_path(candidate, sizeof(candidate), "shader.fs") && access(candidate, R_OK) == 0)
+        return copy_path(buffer, capacity, candidate);
+
+    if (access("runtime/tie-dye-wallpaper/shader.fs", R_OK) == 0)
+        return copy_path(buffer, capacity, "runtime/tie-dye-wallpaper/shader.fs");
+
+    return copy_path(buffer, capacity, "shader.fs");
+}
+
 static bool resolve_speed_path(char *buffer, size_t capacity) {
     const char *explicit_path = getenv("WALLPAPER_SPEED_FILE");
     const char *state_home = getenv("XDG_STATE_HOME");
@@ -66,10 +136,12 @@ static bool resolve_speed_path(char *buffer, size_t capacity) {
 
 static float read_wallpaper_speed(void) {
     char path[PATH_MAX];
-    if (!resolve_speed_path(path, sizeof(path))) return 1.0f;
-    FILE *f = fopen(path, "r");
-    if (!f) return 1.0f;
+    FILE *f;
     float speed = 1.0f;
+
+    if (!resolve_speed_path(path, sizeof(path))) return 1.0f;
+    f = fopen(path, "r");
+    if (!f) return 1.0f;
     if (fscanf(f, "%f", &speed) != 1) speed = 1.0f;
     fclose(f);
     if (speed < 0.0f) speed = 0.0f;
@@ -139,14 +211,22 @@ static void unload_color_render_target(RenderTexture2D target) {
 }
 
 static Window find_pid(Display *d, Window w, Atom pid_atom, unsigned long pid) {
-    Atom type; int format; unsigned long n, left, *value = NULL;
+    Atom type;
+    int format;
+    unsigned long n, left, *value = NULL;
+    Window root, parent, *children = NULL, hit = 0;
+    unsigned count = 0;
+
     if (XGetWindowProperty(d, w, pid_atom, 0, 1, False, XA_CARDINAL,
         &type, &format, &n, &left, (unsigned char **)&value) == Success && value) {
-        bool hit = n && *value == pid; XFree(value); if (hit) return w;
+        bool matches = n && *value == pid;
+        XFree(value);
+        if (matches) return w;
     }
-    Window root, parent, *children = NULL, hit = 0; unsigned count = 0;
-    if (XQueryTree(d, w, &root, &parent, &children, &count))
-        for (unsigned i = 0; i < count && !hit; i++) hit = find_pid(d, children[i], pid_atom, pid);
+    if (XQueryTree(d, w, &root, &parent, &children, &count)) {
+        for (unsigned i = 0; i < count && !hit; i++)
+            hit = find_pid(d, children[i], pid_atom, pid);
+    }
     if (children) XFree(children);
     return hit;
 }
@@ -181,16 +261,13 @@ static void set_desktop_hints(Display *d, Window w) {
     XDeleteProperty(d, w, state_atom);
     XDeleteProperty(d, w, protocols);
     XDeleteProperty(d, w, wm_delete);
-    XMoveResizeWindow(d, w, 0, 0, positive_dimension(DisplayWidth(d, DefaultScreen(d))), positive_dimension(DisplayHeight(d, DefaultScreen(d))));
+    XMoveResizeWindow(d, w, 0, 0,
+        positive_dimension(DisplayWidth(d, DefaultScreen(d))),
+        positive_dimension(DisplayHeight(d, DefaultScreen(d))));
     XLowerWindow(d, w);
     XMapWindow(d, w);
     XFlush(d);
 }
-
-
-
-#define ACTIVE_SHADER_PATH "shader.fs"
-#define RELOAD_FADE_SECONDS 0.35f
 
 typedef struct ManagedShader {
     Shader shader;
@@ -229,15 +306,57 @@ static void unload_candidate(Shader shader) {
     if (shader_is_custom(shader)) UnloadShader(shader);
 }
 
-static Texture2D load_glyph_atlas(void) {
-    const char *atlas_path = getenv("WALLPAPER_GLYPH_ATLAS");
-    if (!atlas_path || !*atlas_path) atlas_path = "/home/freezer/.local/lib/tie-dye-wallpaper/glyph-atlas.png";
-    if (access(atlas_path, R_OK) != 0) return (Texture2D){0};
-    Image image = LoadImage(atlas_path);
-    if (!image.data) return (Texture2D){0};
-    Texture2D atlas = LoadTextureFromImage(image);
+static Texture2D make_glyph_fallback_texture(void) {
+    Image image = GenImageColor(1, 1, WHITE);
+    Texture2D texture = LoadTextureFromImage(image);
     UnloadImage(image);
-    if (atlas.id != 0U) SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
+    if (texture.id != 0U) SetTextureFilter(texture, TEXTURE_FILTER_POINT);
+    return texture;
+}
+
+static bool resolve_glyph_atlas_path(char *buffer, size_t capacity) {
+    const char *explicit_path = getenv("WALLPAPER_GLYPH_ATLAS");
+    char candidate[PATH_MAX];
+
+    if (explicit_path && *explicit_path) return copy_path(buffer, capacity, explicit_path);
+    if (sibling_path(candidate, sizeof(candidate), "glyph-atlas.png") && access(candidate, R_OK) == 0)
+        return copy_path(buffer, capacity, candidate);
+    return false;
+}
+
+static Texture2D load_glyph_atlas(void) {
+    char atlas_path[PATH_MAX];
+    Texture2D fallback = make_glyph_fallback_texture();
+    Image image;
+    Texture2D atlas;
+
+    if (!resolve_glyph_atlas_path(atlas_path, sizeof(atlas_path))) {
+        fprintf(stderr, "glyph atlas: none found; using shader built-in glyphs\n");
+        return fallback;
+    }
+    if (access(atlas_path, R_OK) != 0) {
+        fprintf(stderr, "warning: glyph atlas unreadable: %s: %s; using built-in glyphs\n",
+            atlas_path, strerror(errno));
+        return fallback;
+    }
+
+    image = LoadImage(atlas_path);
+    if (!image.data) {
+        fprintf(stderr, "warning: glyph atlas could not be decoded: %s; using built-in glyphs\n",
+            atlas_path);
+        return fallback;
+    }
+    atlas = LoadTextureFromImage(image);
+    UnloadImage(image);
+    if (atlas.id == 0U) {
+        fprintf(stderr, "warning: glyph atlas texture upload failed: %s; using built-in glyphs\n",
+            atlas_path);
+        return fallback;
+    }
+
+    if (fallback.id != 0U) UnloadTexture(fallback);
+    SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
+    fprintf(stderr, "glyph atlas: %s\n", atlas_path);
     return atlas;
 }
 
@@ -286,21 +405,44 @@ static bool replace_shader(ManagedShader *active, const char *path) {
     return true;
 }
 
-static int open_shader_watch(void) {
-    int descriptor = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+static void set_shader_float(Shader shader, int location, float value) {
+    if (location >= 0) SetShaderValue(shader, location, &value, SHADER_UNIFORM_FLOAT);
+}
+
+static void set_shader_vec2(Shader shader, int location, const float value[2]) {
+    if (location >= 0) SetShaderValue(shader, location, value, SHADER_UNIFORM_VEC2);
+}
+
+static void set_shader_texture(Shader shader, int location, Texture2D texture) {
+    if (location >= 0 && texture.id != 0U) SetShaderValueTexture(shader, location, texture);
+}
+
+static int open_shader_watch(const char *shader_path) {
+    char directory[PATH_MAX];
+    int descriptor;
+
+    if (!path_directory(directory, sizeof(directory), shader_path)) {
+        fprintf(stderr, "warning: live shader reload unavailable: invalid shader path %s\n",
+            shader_path ? shader_path : "(null)");
+        return -1;
+    }
+
+    descriptor = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     if (descriptor < 0) {
         fprintf(stderr, "warning: live shader reload unavailable: %s\n", strerror(errno));
         return -1;
     }
-    if (inotify_add_watch(descriptor, ".", IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE) < 0) {
-        fprintf(stderr, "warning: cannot watch shader directory: %s\n", strerror(errno));
+    if (inotify_add_watch(descriptor, directory, IN_CLOSE_WRITE | IN_MOVED_TO | IN_CREATE) < 0) {
+        fprintf(stderr, "warning: cannot watch shader directory %s: %s\n",
+            directory, strerror(errno));
         close(descriptor);
         return -1;
     }
+    fprintf(stderr, "shader watch: %s\n", directory);
     return descriptor;
 }
 
-static bool shader_file_changed(int descriptor) {
+static bool shader_file_changed(int descriptor, const char *shader_name) {
     union {
         char bytes[4096];
         struct inotify_event alignment;
@@ -322,7 +464,7 @@ static bool shader_file_changed(int descriptor) {
         while (offset < available) {
             const struct inotify_event *event =
                 (const struct inotify_event *)(const void *)(buffer.bytes + offset);
-            if (event->len > 0U && strcmp(event->name, ACTIVE_SHADER_PATH) == 0)
+            if (event->len > 0U && strcmp(event->name, shader_name) == 0)
                 changed = true;
             offset += sizeof(*event) + (size_t)event->len;
         }
@@ -337,6 +479,9 @@ static float randomized_shader_time(void) {
 
 int main(int argc, char **argv) {
     Window parent = 0;
+    char shader_path[PATH_MAX];
+    const char *shader_name;
+
     for (int i = 1; i < argc; i++) {
         if (!strcmp(argv[i], "--version")) {
             printf("xfce-plasma-renderer %s\n", XFCE_PLASMA_VERSION);
@@ -345,6 +490,14 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "--wid") && i + 1 < argc)
             parent = strtoul(argv[++i], NULL, 0);
     }
+
+    if (!resolve_shader_path(shader_path, sizeof(shader_path))) {
+        fprintf(stderr, "fatal: could not resolve active shader path\n");
+        return 1;
+    }
+    shader_name = path_basename(shader_path);
+    fprintf(stderr, "active shader: %s\n", shader_path);
+
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
 
     Display *d = XOpenDisplay(NULL);
@@ -384,14 +537,15 @@ int main(int argc, char **argv) {
     signal(SIGINT, request_termination);
 
     ManagedShader active_shader;
-    if (!load_shader_file(ACTIVE_SHADER_PATH, &active_shader) &&
+    if (!load_shader_file(shader_path, &active_shader) &&
         !load_fallback_shader(&active_shader)) {
-    if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
+        if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
         CloseWindow();
         if (d) XCloseDisplay(d);
         return 1;
     }
-    int shader_watch = open_shader_watch();
+
+    int shader_watch = open_shader_watch(shader_path);
     int reload_state = 0;
     float reload_start = 0.0f;
     float fade_target = 0.0f;
@@ -409,6 +563,7 @@ int main(int argc, char **argv) {
     bool low_power = false;
     fprintf(stderr, "performance: fps=%d render-scale=%.2f\n", target_fps, (double)render_scale);
     SetTargetFPS(target_fps);
+
     while (!terminate_requested) {
         if (!parent && IsKeyPressed(KEY_F)) ToggleFullscreen();
         if (d && !parent) {
@@ -417,12 +572,15 @@ int main(int argc, char **argv) {
             if (own) XLowerWindow(d, own);
             XFlush(d);
         }
+
         int screen_width = GetScreenWidth();
         int screen_height = GetScreenHeight();
         int wanted_width = scaled_dimension(screen_width, render_scale);
         int wanted_height = scaled_dimension(screen_height, render_scale);
         bool scaled_rendering = render_scale < 0.999f;
-        if (scaled_rendering && (render_target.id == 0U || target_width != wanted_width || target_height != wanted_height)) {
+
+        if (scaled_rendering &&
+            (render_target.id == 0U || target_width != wanted_width || target_height != wanted_height)) {
             if (render_target.id != 0U) unload_color_render_target(render_target);
             render_target = load_color_render_target(wanted_width, wanted_height);
             if (render_target.id == 0U || render_target.texture.id == 0U) {
@@ -439,19 +597,22 @@ int main(int argc, char **argv) {
                     target_width, target_height, screen_width, screen_height);
             }
         }
+
         float resolution[2] = {(float)wanted_width, (float)wanted_height};
         float real_time = (float)GetTime();
-        if (shader_watch >= 0 && shader_file_changed(shader_watch) && reload_state == 0) {
+
+        if (shader_watch >= 0 && shader_file_changed(shader_watch, shader_name) && reload_state == 0) {
             reload_state = 1;
             reload_start = real_time;
             fprintf(stderr, "shader change detected; validating candidate\n");
         }
+
         float reload_fade = 1.0f;
         if (reload_state == 1) {
             float progress = clamp01((real_time - reload_start) / RELOAD_FADE_SECONDS);
             reload_fade = 1.0f - smoothstep01(progress);
             if (progress >= 1.0f) {
-                (void)replace_shader(&active_shader, ACTIVE_SHADER_PATH);
+                (void)replace_shader(&active_shader, shader_path);
                 reload_state = 2;
                 reload_start = real_time;
                 reload_fade = 0.0f;
@@ -461,11 +622,13 @@ int main(int argc, char **argv) {
             reload_fade = smoothstep01(progress);
             if (progress >= 1.0f) reload_state = 0;
         }
+
         float dt = real_time - last_time;
         if (dt < 0.0f || dt > 1.0f) dt = 0.0f;
         last_time = real_time;
         float speed = read_wallpaper_speed();
         shader_time += dt * speed;
+
         bool should_use_low_power =
             speed <= 0.0001f && reload_state == 0 &&
             !fade_out_requested && (real_time - start_time) >= fade_seconds;
@@ -473,22 +636,25 @@ int main(int argc, char **argv) {
             low_power = should_use_low_power;
             SetTargetFPS(low_power && target_fps > 5 ? 5 : target_fps);
         }
-        float time = real_time;
-        if (fade_out_requested && fade_out_start < 0.0f) fade_out_start = time;
+
+        float current_time = real_time;
+        if (fade_out_requested && fade_out_start < 0.0f) fade_out_start = current_time;
         float fade;
         if (fade_out_start >= 0.0f) {
-            fade = 1.0f - smoothstep01((time - fade_out_start) / fade_seconds);
+            fade = 1.0f - smoothstep01((current_time - fade_out_start) / fade_seconds);
             if (fade <= 0.001f) break;
         } else {
-            fade = smoothstep01((time - start_time) / fade_seconds);
+            fade = smoothstep01((current_time - start_time) / fade_seconds);
         }
         fade *= reload_fade;
-        SetShaderValue(active_shader.shader, active_shader.resolution_location, resolution, SHADER_UNIFORM_VEC2);
-        SetShaderValue(active_shader.shader, active_shader.time_location, &shader_time, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(active_shader.shader, active_shader.speed_location, &speed, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(active_shader.shader, active_shader.fade_location, &fade, SHADER_UNIFORM_FLOAT);
-        SetShaderValue(active_shader.shader, active_shader.fade_target_location, &fade_target, SHADER_UNIFORM_FLOAT);
-        if (active_shader.glyph_atlas_location >= 0 && glyph_atlas.id != 0U) SetShaderValueTexture(active_shader.shader, active_shader.glyph_atlas_location, glyph_atlas);
+
+        set_shader_vec2(active_shader.shader, active_shader.resolution_location, resolution);
+        set_shader_float(active_shader.shader, active_shader.time_location, shader_time);
+        set_shader_float(active_shader.shader, active_shader.speed_location, speed);
+        set_shader_float(active_shader.shader, active_shader.fade_location, fade);
+        set_shader_float(active_shader.shader, active_shader.fade_target_location, fade_target);
+        set_shader_texture(active_shader.shader, active_shader.glyph_atlas_location, glyph_atlas);
+
         if (scaled_rendering) {
             BeginTextureMode(render_target);
             ClearBackground(BLACK);
@@ -496,6 +662,7 @@ int main(int argc, char **argv) {
             DrawRectangle(0, 0, wanted_width, wanted_height, WHITE);
             EndShaderMode();
             EndTextureMode();
+
             BeginDrawing();
             ClearBackground(BLACK);
             DrawTexturePro(render_target.texture,
@@ -504,11 +671,14 @@ int main(int argc, char **argv) {
                 (Vector2){0.0f, 0.0f}, 0.0f, WHITE);
             EndDrawing();
         } else {
-            BeginDrawing(); BeginShaderMode(active_shader.shader);
+            BeginDrawing();
+            BeginShaderMode(active_shader.shader);
             DrawRectangle(0, 0, screen_width, screen_height, WHITE);
-            EndShaderMode(); EndDrawing();
+            EndShaderMode();
+            EndDrawing();
         }
     }
+
     if (shader_watch >= 0) close(shader_watch);
     if (render_target.id != 0U) unload_color_render_target(render_target);
     UnloadShader(active_shader.shader);

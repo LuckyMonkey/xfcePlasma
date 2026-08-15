@@ -11,6 +11,7 @@
 #include <signal.h>
 #include <limits.h>
 #include <errno.h>
+#include <time.h>
 #include <sys/inotify.h>
 
 #ifndef XFCE_PLASMA_VERSION
@@ -120,6 +121,7 @@ static RenderTexture2D load_color_render_target(int width, int height) {
     target.texture = LoadTextureFromImage(image);
     UnloadImage(image);
     if (target.id == 0U || target.texture.id == 0U) goto failure;
+    SetTextureFilter(target.texture, TEXTURE_FILTER_BILINEAR);
     rlFramebufferAttach(target.id, target.texture.id, RL_ATTACHMENT_COLOR_CHANNEL0,
         RL_ATTACHMENT_TEXTURE2D, 0);
     if (!rlFramebufferComplete(target.id)) goto failure;
@@ -197,6 +199,7 @@ typedef struct ManagedShader {
     int speed_location;
     int fade_location;
     int fade_target_location;
+    int glyph_atlas_location;
 } ManagedShader;
 
 static const char *fallback_fragment_shader =
@@ -226,6 +229,18 @@ static void unload_candidate(Shader shader) {
     if (shader_is_custom(shader)) UnloadShader(shader);
 }
 
+static Texture2D load_glyph_atlas(void) {
+    const char *atlas_path = getenv("WALLPAPER_GLYPH_ATLAS");
+    if (!atlas_path || !*atlas_path) atlas_path = "/home/freezer/.local/lib/tie-dye-wallpaper/glyph-atlas.png";
+    if (access(atlas_path, R_OK) != 0) return (Texture2D){0};
+    Image image = LoadImage(atlas_path);
+    if (!image.data) return (Texture2D){0};
+    Texture2D atlas = LoadTextureFromImage(image);
+    UnloadImage(image);
+    if (atlas.id != 0U) SetTextureFilter(atlas, TEXTURE_FILTER_POINT);
+    return atlas;
+}
+
 static bool populate_managed_shader(Shader shader, ManagedShader *managed) {
     if (!shader_is_custom(shader)) return false;
     managed->shader = shader;
@@ -234,6 +249,7 @@ static bool populate_managed_shader(Shader shader, ManagedShader *managed) {
     managed->speed_location = GetShaderLocation(shader, "speed");
     managed->fade_location = GetShaderLocation(shader, "fade");
     managed->fade_target_location = GetShaderLocation(shader, "fadeTarget");
+    managed->glyph_atlas_location = GetShaderLocation(shader, "glyphAtlas");
     if (managed->resolution_location < 0 || managed->time_location < 0) {
         fprintf(stderr, "shader rejected: required resolution/time uniform missing\n");
         return false;
@@ -313,6 +329,12 @@ static bool shader_file_changed(int descriptor) {
     }
 }
 
+static float randomized_shader_time(void) {
+    unsigned long seed = (unsigned long)time(NULL);
+    seed ^= (unsigned long)getpid() * 2654435761UL;
+    return (float)(seed % 360000UL) / 100.0f;
+}
+
 int main(int argc, char **argv) {
     Window parent = 0;
     for (int i = 1; i < argc; i++) {
@@ -334,6 +356,7 @@ int main(int argc, char **argv) {
     }
 
     InitWindow(width, height, "xfcePlasma Background");
+    Texture2D glyph_atlas = load_glyph_atlas();
 
     if (d) {
         XWindowAttributes a;
@@ -363,6 +386,7 @@ int main(int argc, char **argv) {
     ManagedShader active_shader;
     if (!load_shader_file(ACTIVE_SHADER_PATH, &active_shader) &&
         !load_fallback_shader(&active_shader)) {
+    if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
         CloseWindow();
         if (d) XCloseDisplay(d);
         return 1;
@@ -374,7 +398,8 @@ int main(int argc, char **argv) {
     float fade_seconds = 2.40f;
     float start_time = (float)GetTime();
     float last_time = start_time;
-    float shader_time = start_time;
+    float shader_time = randomized_shader_time();
+    fprintf(stderr, "shader phase: %.2f\n", (double)shader_time);
     float fade_out_start = -1.0f;
     int target_fps = read_target_fps();
     float render_scale = read_render_scale();
@@ -463,6 +488,7 @@ int main(int argc, char **argv) {
         SetShaderValue(active_shader.shader, active_shader.speed_location, &speed, SHADER_UNIFORM_FLOAT);
         SetShaderValue(active_shader.shader, active_shader.fade_location, &fade, SHADER_UNIFORM_FLOAT);
         SetShaderValue(active_shader.shader, active_shader.fade_target_location, &fade_target, SHADER_UNIFORM_FLOAT);
+        if (active_shader.glyph_atlas_location >= 0 && glyph_atlas.id != 0U) SetShaderValueTexture(active_shader.shader, active_shader.glyph_atlas_location, glyph_atlas);
         if (scaled_rendering) {
             BeginTextureMode(render_target);
             ClearBackground(BLACK);
@@ -486,6 +512,7 @@ int main(int argc, char **argv) {
     if (shader_watch >= 0) close(shader_watch);
     if (render_target.id != 0U) unload_color_render_target(render_target);
     UnloadShader(active_shader.shader);
+    if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
     CloseWindow();
     if (d) XCloseDisplay(d);
     return 0;

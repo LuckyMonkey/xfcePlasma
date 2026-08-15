@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="64" viewBox="0 0 512 64">
+  <rect width="512" height="64" fill="#000000"/>
+  <g fill="#ffffff" font-family="DejaVu Sans Mono, monospace" font-size="48" font-weight="bold" text-anchor="middle">
+    <text x="40" y="51">@</text>
+    <text x="120" y="51">#</text>
+    <text x="200" y="51">$</text>
+    <text x="280" y="51">&amp;</text>
+    <text x="360" y="51">*</text>
+    <text x="440" y="51">+</text>
+  </g>
+</svg>

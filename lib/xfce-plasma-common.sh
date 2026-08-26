@@ -192,6 +192,23 @@ xfce_plasma_wait_background_visible() {
   return 1
 }
 
+xfce_plasma_layer_desktop_icons() {
+  local desktop= attempt=0
+  command -v xdotool >/dev/null 2>&1 || return 1
+  command -v xprop >/dev/null 2>&1 || return 1
+  command -v wmctrl >/dev/null 2>&1 || return 1
+  while [ "$attempt" -lt 40 ]; do
+    desktop=$(xdotool search --class Xfdesktop 2>/dev/null | tail -n 1 || true)
+    [ -n "$desktop" ] && break
+    sleep 0.05
+    attempt=$((attempt + 1))
+  done
+  [ -n "$desktop" ] || return 1
+  xprop -id "$desktop" -f _NET_WM_WINDOW_TYPE 32a -set _NET_WM_WINDOW_TYPE _NET_WM_WINDOW_TYPE_NORMAL >/dev/null 2>&1 || true
+  wmctrl -i -r "$desktop" -b remove,above >/dev/null 2>&1 || true
+  wmctrl -i -r "$desktop" -b add,below,sticky,skip_taskbar,skip_pager >/dev/null 2>&1 || true
+}
+
 xfce_plasma_restart_desktop_stack() {
   local wallpaper_unit=${1:-tie-dye-wallpaper-mvp.service}
   local desktop_unit=${2:-xfdesktop-transparent.service}
@@ -221,6 +238,7 @@ xfce_plasma_restart_desktop_stack() {
     status=1
   fi
 
+  xfce_plasma_layer_desktop_icons || status=1
   return "$status"
 }
 

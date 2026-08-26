@@ -109,7 +109,7 @@ run_background() {
   write_backend_state starting "$type" "$id" "$backend" 0 ""
   # Keep a supervisor in the service process slot so a vanished renderer is a failure.
   trap 'exit 143' HUP INT TERM
-  "$XWINWRAP" -b -s -fs -st -sp -ni -nf -ov -fdt -un -- "$SELF" backend-run WID
+  "$XWINWRAP" -b -s -fs -st -sp -ni -nf -fdt -un -- "$SELF" backend-run WID
   status=$?
   if [ "$status" -eq 0 ] && [ "$type" = shader ] && [ "$(backend_state_value state 2>/dev/null || true)" = running ]; then
     status=1

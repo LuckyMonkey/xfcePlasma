@@ -1,9 +1,9 @@
 id=tie-dye
-display_name=Tie Dye
+display_name=Plasma
 category=Ambient
 description=Slow-folding color bands with liquid textile motion.
 author=xfcePlasma project
-thumbnail=tie-dye.png
+thumbnail=plasma.png
 sort_order=11
 alias_of=plasma
 hidden=true

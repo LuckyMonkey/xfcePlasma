@@ -477,6 +477,22 @@ static float randomized_shader_time(void) {
     return (float)(seed % 360000UL) / 100.0f;
 }
 
+static void set_embedded_hints(Display *d, Window w) {
+    Atom type = XInternAtom(d, "_NET_WM_WINDOW_TYPE", False);
+    Atom desktop = XInternAtom(d, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+    Atom state = XInternAtom(d, "_NET_WM_STATE", False);
+    Atom skip_taskbar = XInternAtom(d, "_NET_WM_STATE_SKIP_TASKBAR", False);
+    Atom skip_pager = XInternAtom(d, "_NET_WM_STATE_SKIP_PAGER", False);
+    Atom states[2] = {skip_taskbar, skip_pager};
+    XSetWindowAttributes attrs;
+    attrs.override_redirect = True;
+    XChangeWindowAttributes(d, w, CWOverrideRedirect, &attrs);
+    XChangeProperty(d, w, type, XA_ATOM, 32, PropModeReplace, (unsigned char *)&desktop, 1);
+    XChangeProperty(d, w, state, XA_ATOM, 32, PropModeReplace, (unsigned char *)states, 2);
+    XDeleteProperty(d, w, XInternAtom(d, "_NET_WM_PID", False));
+    XFlush(d);
+}
+
 int main(int argc, char **argv) {
     Window parent = 0;
     char shader_path[PATH_MAX];
@@ -519,6 +535,7 @@ int main(int argc, char **argv) {
         if (parent && XGetWindowAttributes(d, parent, &a)) {
             if (own) {
                 XReparentWindow(d, own, parent, 0, 0);
+                set_embedded_hints(d, own);
                 XResizeWindow(d, own, positive_dimension(a.width), positive_dimension(a.height));
                 XMapWindow(d, own);
                 XFlush(d);
@@ -566,6 +583,7 @@ int main(int argc, char **argv) {
 
     while (!terminate_requested) {
         if (!parent && IsKeyPressed(KEY_F)) ToggleFullscreen();
+        if (IsKeyPressed(KEY_ESCAPE)) fade_out_requested = 1;
         if (d && !parent) {
             Window own = find_pid_wait(d, DefaultRootWindow(d),
                 XInternAtom(d, "_NET_WM_PID", False), (unsigned long)getpid());

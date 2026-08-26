@@ -8,7 +8,15 @@ else
   . "${XFCE_PLASMA_COMMON:-$HOME/.local/lib/xfce-plasma/xfce-plasma-common.sh}"
 fi
 xfce_plasma_export_session_env
+systemctl --user import-environment DISPLAY XAUTHORITY DBUS_SESSION_BUS_ADDRESS SESSION_MANAGER >/dev/null 2>&1 || true
 xfce_plasma_mkdirs
+if ! systemctl --user is-active --quiet picom-effects.service; then
+  systemd-run --user --unit=picom-effects --collect "$HOME/.local/bin/start-picom-effects" >/dev/null 2>&1 || true
+  for attempt in {1..40}; do
+    pgrep -f "$HOME/.local/bin/picom --config" >/dev/null 2>&1 && break
+    sleep 0.25
+  done
+fi
 
 wait_for_stable_display() {
   local previous="" current="" stable=0 attempt
@@ -35,12 +43,5 @@ wait_for_stable_display() {
   done
 }
 
-stack_log="$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log"
 wait_for_stable_display
-
-if ! xfce_plasma_restart_desktop_stack \
-  tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$stack_log" 2>&1; then
-  printf 'xfcePlasma desktop stack failed to start. Log: %s\n' "$stack_log" >&2
-  tail -n 20 "$stack_log" >&2 2>/dev/null || true
-  exit 1
-fi
+xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service >"$XFCE_PLASMA_LOG_DIR/wallpaper-stack.log" 2>&1 || true

@@ -111,7 +111,7 @@ run_background() {
   trap 'exit 143' HUP INT TERM
   root_geometry=$(xwininfo -root 2>/dev/null | awk '/Width:/ {w=$2} /Height:/ {h=$2} END {if (w && h) print w "x" h "+0+0"}')
   [ -n "$root_geometry" ] || root_geometry=5760x1080
-  "$XWINWRAP" -b -g "$root_geometry" -s -st -sp -ni -nf -un -- "$SELF" backend-run WID
+  "$XWINWRAP" -b -ovr -g "$root_geometry" -s -st -sp -ni -nf -un -- "$SELF" backend-run WID
   status=$?
   if [ "$status" -eq 0 ] && [ "$type" = shader ] && [ "$(backend_state_value state 2>/dev/null || true)" = running ]; then
     status=1

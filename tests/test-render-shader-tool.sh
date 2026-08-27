@@ -20,6 +20,9 @@ done
 file "$tmp/one.png" | grep -q 'PNG image data'
 test -s "$tmp/one.png"
 identify -format '%wx%h' "$tmp/one.png" | grep -qx '160x90'
+"$tool" grime-melting-ice-cream --time 0 --size 160x90 --output "$tmp/ice0.png" >/dev/null 2>&1
+"$tool" grime-melting-ice-cream --time 15 --size 160x90 --output "$tmp/ice15.png" >/dev/null 2>&1
+if cmp -s "$tmp/ice0.png" "$tmp/ice15.png"; then printf 'melting ice cream shader has no visible time variation\n' >&2; exit 1; fi
 sha256sum "$tmp/one.png" > "$tmp/hash1"
 "$tool" grime-signal --time 12 --size 160x90 --output "$tmp/two.png" >/dev/null 2>&1
 [ "$(convert "$tmp/one.png" RGBA:- | sha256sum | awk '{print $1}')" = "$(convert "$tmp/two.png" RGBA:- | sha256sum | awk '{print $1}')" ]

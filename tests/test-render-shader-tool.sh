@@ -26,7 +26,7 @@ sha256sum "$tmp/one.png" > "$tmp/hash1"
 if "$tool" does-not-exist --output "$tmp/bad.png" >/tmp/tool-bad 2>&1; then exit 1; fi
 grep -q 'shader not found' /tmp/tool-bad
 "$tool" --gallery --size 80x45 --output-dir "$tmp/gallery" >/dev/null 2>&1
-[ "$(find "$tmp/gallery" -name '*.png' | wc -l)" -eq 12 ]
+[ "$(find "$tmp/gallery" -name '*.png' | wc -l)" -eq 13 ]
 [ ! -e "$tmp/gallery/glyph-diagnostic.png" ]
 if "$tool" glyph-diagnostic --output "$tmp/hidden.png" >/dev/null 2>&1; then exit 1; fi
 "$frames" ricky --output-dir "$tmp/ricky" >/dev/null 2>&1

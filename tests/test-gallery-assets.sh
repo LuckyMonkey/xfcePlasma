@@ -41,7 +41,7 @@ for shader in "$shader_dir"/*.fs; do
   sha256sum "$shader" | awk '{print $1}' >> "$tmp/hashes"
   shader_count=$((shader_count + 1))
 done
-[ "$shader_count" -eq 12 ]
+[ "$shader_count" -eq 13 ]
 [ "$(sort -u "$tmp/ids" | wc -l)" -eq "$shader_count" ]
 [ "$(sort -u "$tmp/orders" | wc -l)" -eq "$shader_count" ]
 while IFS= read -r referenced; do

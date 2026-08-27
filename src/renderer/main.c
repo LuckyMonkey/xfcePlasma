@@ -572,6 +572,25 @@ static int compare_doubles(const void *left, const void *right) {
     return (a > b) - (a < b);
 }
 
+static void json_escape(char *buffer, size_t capacity, const char *text) {
+    size_t offset = 0U;
+    if (!buffer || capacity == 0U) return;
+    for (const unsigned char *cursor = (const unsigned char *)(text ? text : ""); *cursor && offset + 2U < capacity; cursor++) {
+        if (*cursor == '\\' || *cursor == '"') {
+            if (offset + 2U >= capacity) break;
+            buffer[offset++] = '\\';
+            buffer[offset++] = (char)*cursor;
+        } else if (*cursor == '\n' || *cursor == '\r' || *cursor == '\t') {
+            if (offset + 2U >= capacity) break;
+            buffer[offset++] = '\\';
+            buffer[offset++] = *cursor == '\n' ? 'n' : (*cursor == '\r' ? 'r' : 't');
+        } else if (*cursor >= 0x20U) {
+            buffer[offset++] = (char)*cursor;
+        }
+    }
+    buffer[offset] = '\0';
+}
+
 static bool parse_options(int argc, char **argv, RendererOptions *options) {
     memset(options, 0, sizeof(*options));
     for (int i = 1; i < argc; i++) {
@@ -671,6 +690,8 @@ int main(int argc, char **argv) {
     float benchmark_seconds;
     bool capture_mode, benchmark_mode, json_output;
     const char *capture_path;
+    char json_shader_name[PATH_MAX * 2U];
+    int exit_status = 0;
 
     if (!parse_options(argc, argv, &options)) {
         print_usage(argv[0]);
@@ -696,6 +717,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     shader_name = path_basename(shader_path);
+    json_escape(json_shader_name, sizeof(json_shader_name), shader_name);
     fprintf(stderr, "active shader: %s\n", shader_path);
 
     SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE |
@@ -711,6 +733,11 @@ int main(int argc, char **argv) {
     }
 
     InitWindow(width, height, "xfcePlasma Background");
+    if (!IsWindowReady()) {
+        fprintf(stderr, "fatal: renderer window/context could not be initialized\n");
+        if (d) XCloseDisplay(d);
+        return 1;
+    }
     Texture2D glyph_atlas = load_glyph_atlas();
 
     if (d) {
@@ -813,6 +840,7 @@ int main(int argc, char **argv) {
                 fprintf(stderr, "warning: render-scale framebuffer unavailable; using native resolution\n");
                 if (capture_mode || benchmark_mode) {
                     fprintf(stderr, "fatal: capture framebuffer unavailable\n");
+                    exit_status = 1;
                     terminate_requested = 1;
                     break;
                 }
@@ -921,6 +949,7 @@ int main(int argc, char **argv) {
             if (screenshot.data != NULL) UnloadImage(screenshot);
             if (!saved) {
                 fprintf(stderr, "capture failed: %s\n", capture_path);
+                exit_status = 1;
                 terminate_requested = 1;
             }
             break;
@@ -970,7 +999,7 @@ int main(int argc, char **argv) {
             p95 = benchmark_samples[p95_index];
         }
         if (json_output) {
-            printf("{\"shader\":\"%s\",\"backend\":\"raylib-opengl\",\"timing_source\":\"cpu_frame_wall_clock\",\"resolution\":\"%dx%d\",\"width\":%d,\"height\":%d,\"frames\":%lu,\"elapsed_seconds\":%.3f,\"average_frame_ms\":%.3f,\"median_frame_ms\":%.3f,\"p95_frame_ms\":%.3f,\"min_frame_ms\":%.3f,\"max_frame_ms\":%.3f,\"approx_fps\":%.2f}\n", shader_name, width, height, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
+            printf("{\"shader\":\"%s\",\"backend\":\"raylib-opengl\",\"timing_source\":\"cpu_frame_wall_clock\",\"resolution\":\"%dx%d\",\"width\":%d,\"height\":%d,\"frames\":%lu,\"elapsed_seconds\":%.3f,\"average_frame_ms\":%.3f,\"median_frame_ms\":%.3f,\"p95_frame_ms\":%.3f,\"min_frame_ms\":%.3f,\"max_frame_ms\":%.3f,\"approx_fps\":%.2f}\n", json_shader_name, width, height, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
         } else {
             printf("shader=%s backend=raylib-opengl timing_source=cpu_frame_wall_clock resolution=%dx%d frames=%lu elapsed_seconds=%.3f average_frame_ms=%.3f median_frame_ms=%.3f p95_frame_ms=%.3f min_frame_ms=%.3f max_frame_ms=%.3f approx_fps=%.2f\n", shader_name, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
         }
@@ -983,5 +1012,5 @@ int main(int argc, char **argv) {
     if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
     CloseWindow();
     if (d) XCloseDisplay(d);
-    return 0;
+    return exit_status;
 }

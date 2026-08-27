@@ -37,9 +37,12 @@ while [ "$#" -gt 0 ]; do
     *) [ -z "$shader" ] || { printf 'only one shader may be selected\n' >&2; exit 2; }; shader=$1; shift;;
   esac
 done
-case "$width" in ''|*[!0-9]*) printf 'invalid width: %s\n' "$width" >&2; exit 2;; esac
-case "$height" in ''|*[!0-9]*) printf 'invalid height: %s\n' "$height" >&2; exit 2;; esac
-case "$at_time" in ''|*[!0-9.-]*) printf 'invalid time: %s\n' "$at_time" >&2; exit 2;; esac
+if ! [[ "$width" =~ ^[1-9][0-9]*$ ]] || ! [[ "$height" =~ ^[1-9][0-9]*$ ]]; then
+  printf 'invalid size: %sx%s\n' "$width" "$height" >&2; exit 2
+fi
+if ! [[ "$at_time" =~ ^-?([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]]; then
+  printf 'invalid time: %s\n' "$at_time" >&2; exit 2
+fi
 if [ "$gallery" = true ]; then
   [ -z "$shader" ] || { printf '--gallery does not take a shader name\n' >&2; exit 2; }
   [ -n "$output_dir" ] || { printf '--gallery requires --output-dir\n' >&2; exit 2; }
@@ -47,7 +50,13 @@ if [ "$gallery" = true ]; then
   tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
   while IFS=$'\t' read -r file id _; do
     [ -n "$file" ] || continue
-    args=("$file" --size "${width}x${height}" --time "$at_time" --output "$output_dir/$id.png")
+    preview_time=$at_time
+    meta=${file%.fs}.meta
+    if [ -r "$meta" ]; then
+      candidate=$(awk -F= '$1 == "preview_time" {print $2; exit}' "$meta")
+      [ -z "$candidate" ] || preview_time=$candidate
+    fi
+    args=("$file" --size "${width}x${height}" --time "$preview_time" --output "$output_dir/$id.png")
     [ "$update" = true ] && args+=(--update-thumbnails)
     "$0" "${args[@]}" || exit
   done < <(WALLPAPER_SHADER_DIR="$shader_dir" WALLPAPER_USER_SHADER_DIR="$tmp" WALLPAPER_THUMBNAIL_DIR="$thumbnail_dir" "$picker" catalog)

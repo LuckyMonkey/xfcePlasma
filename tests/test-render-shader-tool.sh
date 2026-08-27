@@ -11,6 +11,8 @@ export WALLPAPER_SHADER_DIR="$shader_dir" WALLPAPER_USER_SHADER_DIR="$tmp/no-use
 if "$repo_root/build/xfce-plasma-renderer" --unknown-option >/dev/null 2>&1; then exit 1; fi
 if "$repo_root/build/xfce-plasma-renderer" --wid garbage >/dev/null 2>&1; then exit 1; fi
 if "$repo_root/build/xfce-plasma-renderer" --wid >/dev/null 2>&1; then exit 1; fi
+if "$tool" grime-signal --size 0x90 --output "$tmp/bad.png" >/dev/null 2>&1; then exit 1; fi
+if "$tool" grime-signal --time nope --output "$tmp/bad.png" >/dev/null 2>&1; then exit 1; fi
 "$tool" grime-signal --time 12 --size 160x90 --output "$tmp/one.png" >/dev/null 2>&1
 file "$tmp/one.png" | grep -q 'PNG image data'
 test -s "$tmp/one.png"

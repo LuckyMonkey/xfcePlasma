@@ -16,6 +16,7 @@
 #include <float.h>
 #include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 #ifndef XFCE_PLASMA_VERSION
 #define XFCE_PLASMA_VERSION "unknown"
@@ -720,8 +721,10 @@ int main(int argc, char **argv) {
     json_escape(json_shader_name, sizeof(json_shader_name), shader_name);
     fprintf(stderr, "active shader: %s\n", shader_path);
 
-    SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE |
-        ((capture_mode || benchmark_mode) ? FLAG_WINDOW_HIDDEN : 0));
+    unsigned int window_flags = FLAG_WINDOW_UNDECORATED | FLAG_WINDOW_RESIZABLE;
+    if (!benchmark_mode) window_flags |= FLAG_VSYNC_HINT;
+    if (capture_mode || benchmark_mode) window_flags |= FLAG_WINDOW_HIDDEN;
+    SetConfigFlags(window_flags);
 
     Display *d = XOpenDisplay(NULL);
     if (d) XSetErrorHandler(ignore_x_error);
@@ -802,17 +805,27 @@ int main(int argc, char **argv) {
     int target_height = 0;
     bool low_power = false;
     fprintf(stderr, "performance: fps=%d render-scale=%.2f\n", target_fps, (double)render_scale);
-    if (capture_mode || benchmark_mode) SetTargetFPS(240);
+    if (benchmark_mode) SetTargetFPS(0);
+    else if (capture_mode) SetTargetFPS(240);
     else SetTargetFPS(target_fps);
     struct timespec benchmark_start = {0}, frame_start, frame_end;
     double benchmark_sum = 0.0, benchmark_min = DBL_MAX, benchmark_max = 0.0;
     unsigned long benchmark_frames = 0, benchmark_warmup = 0;
     bool benchmark_started = false;
+    bool benchmark_failed = false;
     double benchmark_elapsed = 0.0;
     double *benchmark_samples = NULL;
     size_t benchmark_sample_capacity = 0U;
 
     while (!terminate_requested) {
+        bool measure_frame = benchmark_mode && benchmark_warmup >= 30UL;
+        if (measure_frame) {
+            (void)clock_gettime(CLOCK_MONOTONIC, &frame_start);
+            if (!benchmark_started) {
+                benchmark_start = frame_start;
+                benchmark_started = true;
+            }
+        }
         if (!parent && IsKeyPressed(KEY_F)) ToggleFullscreen();
         if (IsKeyPressed(KEY_ESCAPE)) fade_out_requested = 1;
         if (d && !parent) {
@@ -891,7 +904,7 @@ int main(int argc, char **argv) {
         bool should_use_low_power =
             speed <= 0.0001f && reload_state == 0 &&
             !fade_out_requested && (real_time - start_time) >= fade_seconds;
-        if (should_use_low_power != low_power) {
+        if (!benchmark_mode && should_use_low_power != low_power) {
             low_power = should_use_low_power;
             SetTargetFPS(low_power && target_fps > 5 ? 5 : target_fps);
         }
@@ -915,7 +928,6 @@ int main(int argc, char **argv) {
         set_shader_float(active_shader.shader, active_shader.fade_target_location, fade_target);
         set_shader_texture(active_shader.shader, active_shader.glyph_atlas_location, glyph_atlas);
 
-        if (benchmark_mode) (void)clock_gettime(CLOCK_MONOTONIC, &frame_start);
         if (scaled_rendering) {
             BeginTextureMode(render_target);
             ClearBackground(BLACK);
@@ -956,20 +968,31 @@ int main(int argc, char **argv) {
         }
         if (benchmark_mode) {
             (void)clock_gettime(CLOCK_MONOTONIC, &frame_end);
-            double frame_ms = ((double)(frame_end.tv_sec - frame_start.tv_sec) * 1000.0) +
-                ((double)(frame_end.tv_nsec - frame_start.tv_nsec) / 1000000.0);
-            if (benchmark_warmup < 30UL) {
-                benchmark_warmup++;
-            } else {
-                if (!benchmark_started) { benchmark_start = frame_end; benchmark_started = true; }
+            if (measure_frame) {
+                double frame_ms = ((double)(frame_end.tv_sec - frame_start.tv_sec) * 1000.0) +
+                    ((double)(frame_end.tv_nsec - frame_start.tv_nsec) / 1000000.0);
                 benchmark_sum += frame_ms;
                 if (frame_ms < benchmark_min) benchmark_min = frame_ms;
                 if (frame_ms > benchmark_max) benchmark_max = frame_ms;
                 if (benchmark_frames >= benchmark_sample_capacity) {
-                    size_t new_capacity = benchmark_sample_capacity ? benchmark_sample_capacity * 2U : 256U;
+                    size_t new_capacity;
+                    if (benchmark_sample_capacity > SIZE_MAX / 2U) {
+                        fprintf(stderr, "fatal: benchmark sample capacity overflow\n");
+                        benchmark_failed = true;
+                        terminate_requested = 1;
+                        break;
+                    }
+                    new_capacity = benchmark_sample_capacity ? benchmark_sample_capacity * 2U : 256U;
+                    if (new_capacity > SIZE_MAX / sizeof(*benchmark_samples)) {
+                        fprintf(stderr, "fatal: benchmark sample allocation size overflow\n");
+                        benchmark_failed = true;
+                        terminate_requested = 1;
+                        break;
+                    }
                     double *new_samples = realloc(benchmark_samples, new_capacity * sizeof(*new_samples));
                     if (!new_samples) {
                         fprintf(stderr, "fatal: benchmark sample allocation failed\n");
+                        benchmark_failed = true;
                         terminate_requested = 1;
                         break;
                     }
@@ -978,30 +1001,36 @@ int main(int argc, char **argv) {
                 }
                 benchmark_samples[benchmark_frames] = frame_ms;
                 benchmark_frames++;
-                double elapsed = (double)(frame_end.tv_sec - benchmark_start.tv_sec) +
+                benchmark_elapsed = (double)(frame_end.tv_sec - benchmark_start.tv_sec) +
                     (double)(frame_end.tv_nsec - benchmark_start.tv_nsec) / 1000000000.0;
-                benchmark_elapsed = elapsed;
-                if (elapsed >= (double)benchmark_seconds) break;
+                if (benchmark_elapsed >= (double)benchmark_seconds) break;
+            } else {
+                benchmark_warmup++;
             }
         }
     }
 
-    if (benchmark_mode) {
+    if (benchmark_mode && !benchmark_failed) {
         double average = benchmark_frames ? benchmark_sum / (double)benchmark_frames : 0.0;
         double median = 0.0, p95 = 0.0;
         double elapsed = benchmark_elapsed;
-        double fps = average > 0.0 ? 1000.0 / average : 0.0;
+        double fps = elapsed > 0.0 ? (double)benchmark_frames / elapsed : 0.0;
         if (benchmark_frames) {
             qsort(benchmark_samples, benchmark_frames, sizeof(*benchmark_samples), compare_doubles);
-            median = benchmark_samples[benchmark_frames / 2U];
+            if (benchmark_frames % 2U == 0U) {
+                median = (benchmark_samples[benchmark_frames / 2U - 1U] +
+                    benchmark_samples[benchmark_frames / 2U]) / 2.0;
+            } else {
+                median = benchmark_samples[benchmark_frames / 2U];
+            }
             size_t p95_index = (size_t)ceil((double)benchmark_frames * 0.95) - 1U;
             if (p95_index >= benchmark_frames) p95_index = benchmark_frames - 1U;
             p95 = benchmark_samples[p95_index];
         }
         if (json_output) {
-            printf("{\"shader\":\"%s\",\"backend\":\"raylib-opengl\",\"timing_source\":\"cpu_frame_wall_clock\",\"resolution\":\"%dx%d\",\"width\":%d,\"height\":%d,\"frames\":%lu,\"elapsed_seconds\":%.3f,\"average_frame_ms\":%.3f,\"median_frame_ms\":%.3f,\"p95_frame_ms\":%.3f,\"min_frame_ms\":%.3f,\"max_frame_ms\":%.3f,\"approx_fps\":%.2f}\n", json_shader_name, width, height, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
+            printf("{\"shader\":\"%s\",\"backend\":\"raylib-opengl\",\"timing_source\":\"cpu_frame_wall_clock\",\"percentile_method\":\"nearest_rank\",\"resolution\":\"%dx%d\",\"width\":%d,\"height\":%d,\"frames\":%lu,\"elapsed_seconds\":%.3f,\"average_frame_ms\":%.3f,\"median_frame_ms\":%.3f,\"p95_frame_ms\":%.3f,\"min_frame_ms\":%.3f,\"max_frame_ms\":%.3f,\"approx_fps\":%.2f}\n", json_shader_name, width, height, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
         } else {
-            printf("shader=%s backend=raylib-opengl timing_source=cpu_frame_wall_clock resolution=%dx%d frames=%lu elapsed_seconds=%.3f average_frame_ms=%.3f median_frame_ms=%.3f p95_frame_ms=%.3f min_frame_ms=%.3f max_frame_ms=%.3f approx_fps=%.2f\n", shader_name, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
+            printf("shader=%s backend=raylib-opengl timing_source=cpu_frame_wall_clock percentile_method=nearest_rank resolution=%dx%d frames=%lu elapsed_seconds=%.3f average_frame_ms=%.3f median_frame_ms=%.3f p95_frame_ms=%.3f min_frame_ms=%.3f max_frame_ms=%.3f approx_fps=%.2f\n", shader_name, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
         }
     }
     free(benchmark_samples);
@@ -1012,5 +1041,6 @@ int main(int argc, char **argv) {
     if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
     CloseWindow();
     if (d) XCloseDisplay(d);
+    if (benchmark_failed) exit_status = 1;
     return exit_status;
 }

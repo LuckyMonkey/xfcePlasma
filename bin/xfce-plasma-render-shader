@@ -53,8 +53,14 @@ if [ "$gallery" = true ]; then
     preview_time=$at_time
     meta=${file%.fs}.meta
     if [ -r "$meta" ]; then
-      candidate=$(awk -F= '$1 == "preview_time" {print $2; exit}' "$meta")
-      [ -z "$candidate" ] || preview_time=$candidate
+      candidate=$(awk -F= '$1 == "preview_time" {value=$2; sub(/^[[:space:]]+/, "", value); sub(/[[:space:]]+$/, "", value); print value; exit}' "$meta")
+      if [ -n "$candidate" ]; then
+        if ! [[ "$candidate" =~ ^-?([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]]; then
+          printf 'invalid preview_time for shader %s in metadata %s: %s\n' "$file" "$meta" "$candidate" >&2
+          exit 2
+        fi
+        preview_time=$candidate
+      fi
     fi
     args=("$file" --size "${width}x${height}" --time "$preview_time" --output "$output_dir/$id.png")
     [ "$update" = true ] && args+=(--update-thumbnails)
@@ -78,6 +84,9 @@ if [ "$include_hidden" = false ] && [ -r "$meta_path" ] && grep -Eq '^(hidden|di
   exit 1
 fi
 if [ -n "$benchmark" ]; then
+  if ! [[ "$benchmark" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]] || [ "$benchmark" = 0 ] || [[ "$benchmark" =~ ^0*([.]0*)?$ ]]; then
+    printf 'invalid benchmark duration: %s\n' "$benchmark" >&2; exit 2
+  fi
   [ -z "$output" ] || { printf '--output cannot be combined with --benchmark\n' >&2; exit 2; }
   command=("$renderer" --shader "$shader_path" --benchmark "$benchmark" --time "$at_time" --width "$width" --height "$height")
   [ "$json" = true ] && command+=(--json)

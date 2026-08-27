@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(cd "$script_dir/.." && pwd)
+if [ -x "$repo_root/build/xfce-plasma-renderer" ]; then
+  renderer=$repo_root/build/xfce-plasma-renderer
+elif [ -x "$HOME/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper" ]; then
+  renderer=$HOME/.local/lib/tie-dye-wallpaper/tie-dye-wallpaper
+else
+  printf 'renderer not found; run make renderer first\n' >&2; exit 1
+fi
+if [ -d "$repo_root/runtime/tie-dye-wallpaper/shaders" ]; then
+  shader_dir=$repo_root/runtime/tie-dye-wallpaper/shaders
+  thumbnail_dir=$repo_root/assets/thumbnails
+else
+  shader_dir=${WALLPAPER_SHADER_DIR:-$HOME/.local/lib/tie-dye-wallpaper/shaders}
+  thumbnail_dir=${WALLPAPER_THUMBNAIL_DIR:-$HOME/.local/share/xfce-plasma/assets/thumbnails}
+fi
+picker=$script_dir/animated-wallpaper-picker
+width=320 height=180 shader='' output='' output_dir='' at_time=0 benchmark='' gallery=false json=false update=false include_hidden=false user_shader_dir=${WALLPAPER_USER_SHADER_DIR:-/nonexistent}
+usage() { printf 'usage: %s SHADER [--time SEC] [--size WIDTHxHEIGHT] [--output PNG]\n       %s SHADER --benchmark SEC [--json] [--include-hidden]\n       %s --gallery --output-dir DIR [--update-thumbnails]\n       %s --include-hidden SHADER ...\n' "${0##*/}" "${0##*/}" "${0##*/}"; }
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --help|-h) usage; exit 0;;
+    --gallery) gallery=true; shift;;
+    --update-thumbnails) update=true; shift;;
+    --time) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; at_time=$2; shift 2;;
+    --size) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; IFS=x read -r width height <<< "$2"; shift 2;;
+    --output) output=${2:?missing output path}; shift 2;;
+    --output-dir) output_dir=${2:?missing output directory}; shift 2;;
+    --benchmark) benchmark=${2:?missing benchmark seconds}; shift 2;;
+    --json) json=true; shift;;
+    --include-hidden) include_hidden=true; shift;;
+    --) shift; break;;
+    -*) printf 'unknown option: %s\n' "$1" >&2; usage >&2; exit 2;;
+    *) [ -z "$shader" ] || { printf 'only one shader may be selected\n' >&2; exit 2; }; shader=$1; shift;;
+  esac
+done
+case "$width" in ''|*[!0-9]*) printf 'invalid width: %s\n' "$width" >&2; exit 2;; esac
+case "$height" in ''|*[!0-9]*) printf 'invalid height: %s\n' "$height" >&2; exit 2;; esac
+case "$at_time" in ''|*[!0-9.-]*) printf 'invalid time: %s\n' "$at_time" >&2; exit 2;; esac
+if [ "$gallery" = true ]; then
+  [ -z "$shader" ] || { printf '--gallery does not take a shader name\n' >&2; exit 2; }
+  [ -n "$output_dir" ] || { printf '--gallery requires --output-dir\n' >&2; exit 2; }
+  mkdir -p -- "$output_dir"
+  tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
+  while IFS=$'\t' read -r file id _; do
+    [ -n "$file" ] || continue
+    args=("$file" --size "${width}x${height}" --time "$at_time" --output "$output_dir/$id.png")
+    [ "$update" = true ] && args+=(--update-thumbnails)
+    "$0" "${args[@]}" || exit
+  done < <(WALLPAPER_SHADER_DIR="$shader_dir" WALLPAPER_USER_SHADER_DIR="$tmp" WALLPAPER_THUMBNAIL_DIR="$thumbnail_dir" "$picker" catalog)
+  exit 0
+fi
+[ -n "$shader" ] || { usage >&2; exit 2; }
+if [[ "$shader" = /* || "$shader" == */* ]]; then shader_path=$shader; else shader_path=$shader_dir/$shader; [[ "$shader_path" = *.fs ]] || shader_path+=.fs; fi
+[ -r "$shader_path" ] || {
+  printf 'shader not found: %s\n' "$shader" >&2
+  printf 'available shaders: ' >&2
+  visible=$(WALLPAPER_SHADER_DIR="$shader_dir" WALLPAPER_USER_SHADER_DIR="$user_shader_dir" "$picker" catalog 2>/dev/null | awk -F '\t' '{print $2}' | paste -sd, -)
+  printf '%s\n' "${visible:-none}" >&2
+  exit 1
+}
+shader_id=$(basename "$shader_path" .fs)
+meta_path=${shader_path%.fs}.meta
+if [ "$include_hidden" = false ] && [ -r "$meta_path" ] && grep -Eq '^(hidden|diagnostic|migration)=true$' "$meta_path"; then
+  printf 'shader is hidden: %s (use --include-hidden for developer-only entries)\n' "$shader" >&2
+  exit 1
+fi
+if [ -n "$benchmark" ]; then
+  [ -z "$output" ] || { printf '--output cannot be combined with --benchmark\n' >&2; exit 2; }
+  command=("$renderer" --shader "$shader_path" --benchmark "$benchmark" --time "$at_time" --width "$width" --height "$height")
+  [ "$json" = true ] && command+=(--json)
+else
+  [ -n "$output" ] || output=$shader_id.png
+  mkdir -p -- "$(dirname "$output")"
+  command=("$renderer" --shader "$shader_path" --capture "$output" --time "$at_time" --width "$width" --height "$height")
+fi
+run_command() {
+  if [ -z "${DISPLAY:-}" ] && command -v xvfb-run >/dev/null 2>&1; then
+    xvfb-run -a env WALLPAPER_SHADER_FILE="$shader_path" "${command[@]}"
+  else
+    env WALLPAPER_SHADER_FILE="$shader_path" "${command[@]}"
+  fi
+}
+if [ -n "$benchmark" ] && [ "$json" = true ]; then
+  log=$(mktemp)
+  trap 'rm -f "$log"' EXIT
+  if ! run_command >"$log"; then cat "$log" >&2; exit 1; fi
+  json_line=$(grep -E '^\{' "$log" | tail -1 || true)
+  [ -n "$json_line" ] || { cat "$log" >&2; printf 'benchmark did not produce JSON\n' >&2; exit 1; }
+  printf '%s\n' "$json_line"
+else
+  run_command
+fi
+if [ -z "$benchmark" ] && [ "$update" = true ]; then
+  [ -d "$repo_root/assets/thumbnails" ] || { printf '--update-thumbnails is only available from the repository checkout\n' >&2; exit 2; }
+  cp -f -- "$output" "$repo_root/assets/thumbnails/$shader_id.png"
+fi

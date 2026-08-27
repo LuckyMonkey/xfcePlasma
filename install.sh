@@ -70,6 +70,8 @@ BIN_SCRIPTS=(
   game-mode-raster-wallpaper
   game-mode-fade
   animated-wallpaper-picker
+  xfce-plasma-render-shader
+  xfce-plasma-render-shader-frames
   animated-wallpaper-speed
   xfce-plasma-doctor
   xfce-plasma-settings

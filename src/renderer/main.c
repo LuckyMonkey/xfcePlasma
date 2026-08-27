@@ -13,6 +13,9 @@
 #include <errno.h>
 #include <time.h>
 #include <sys/inotify.h>
+#include <float.h>
+#include <math.h>
+#include <stdarg.h>
 
 #ifndef XFCE_PLASMA_VERSION
 #define XFCE_PLASMA_VERSION "unknown"
@@ -31,6 +34,12 @@ static void request_fade_out(int sig) {
 static void request_termination(int sig) {
     (void)sig;
     terminate_requested = 1;
+}
+
+static void trace_log_stderr(int log_level, const char *text, va_list args) {
+    (void)log_level;
+    vfprintf(stderr, text, args);
+    fputc('\n', stderr);
 }
 
 static float clamp01(float v) {
@@ -493,33 +502,210 @@ static void set_embedded_hints(Display *d, Window w) {
     XFlush(d);
 }
 
+typedef struct RendererOptions {
+    Window parent;
+    char shader_path[PATH_MAX];
+    char capture_path[PATH_MAX];
+    int width;
+    int height;
+    float fixed_time;
+    float benchmark_seconds;
+    bool fixed_time_set;
+    bool capture_mode;
+    bool benchmark_mode;
+    bool json_output;
+} RendererOptions;
+
+static void print_usage(const char *program) {
+    printf("usage: %s [--wid XID] [--shader PATH] [--capture PNG] [options]\n"
+           "       %s --benchmark SECONDS [options]\n\n"
+           "options:\n"
+           "  --shader PATH       render this fragment shader\n"
+           "  --capture PNG       render one deterministic frame and exit\n"
+           "  --benchmark SEC     benchmark steady-state rendering\n"
+           "  --width N           capture/benchmark width (default: 320)\n"
+           "  --height N          capture/benchmark height (default: 180)\n"
+           "  --time SEC          fixed shader time (default: 0)\n"
+           "  --no-random-phase   start normal wallpaper time at zero\n"
+           "  --json              emit benchmark results as JSON\n"
+           "  --wid XID           embed in an existing X11 window\n"
+           "  --version           print the renderer version\n"
+           "  --help              show this help\n", program, program);
+}
+
+static bool parse_float_argument(const char *text, float *value) {
+    char *end = NULL;
+    float parsed;
+    if (!text || !*text) return false;
+    errno = 0;
+    parsed = strtof(text, &end);
+    if (errno != 0 || end == text || *end != '\0' || !isfinite(parsed)) return false;
+    *value = parsed;
+    return true;
+}
+
+static bool parse_positive_int(const char *text, int *value) {
+    char *end = NULL;
+    long parsed;
+    if (!text || !*text) return false;
+    errno = 0;
+    parsed = strtol(text, &end, 10);
+    if (errno != 0 || end == text || *end != '\0' || parsed < 1 || parsed > INT_MAX) return false;
+    *value = (int)parsed;
+    return true;
+}
+
+static bool parse_window_id(const char *text, Window *value) {
+    char *end = NULL;
+    unsigned long parsed;
+    if (!text || !*text) return false;
+    errno = 0;
+    parsed = strtoul(text, &end, 0);
+    if (errno != 0 || end == text || *end != '\0' || parsed == 0UL) return false;
+    *value = (Window)parsed;
+    return true;
+}
+
+static int compare_doubles(const void *left, const void *right) {
+    const double a = *(const double *)left;
+    const double b = *(const double *)right;
+    return (a > b) - (a < b);
+}
+
+static bool parse_options(int argc, char **argv, RendererOptions *options) {
+    memset(options, 0, sizeof(*options));
+    for (int i = 1; i < argc; i++) {
+        const char *argument = argv[i];
+        const char *value = i + 1 < argc ? argv[i + 1] : NULL;
+        if (!strcmp(argument, "--version")) {
+            printf("xfce-plasma-renderer %s\n", XFCE_PLASMA_VERSION);
+            exit(0);
+        } else if (!strcmp(argument, "--help")) {
+            print_usage(argv[0]);
+            exit(0);
+        } else if (!strcmp(argument, "--no-random-phase")) {
+            options->fixed_time = 0.0f;
+            options->fixed_time_set = true;
+        } else if (!strcmp(argument, "--json")) {
+            options->json_output = true;
+        } else if (!strcmp(argument, "--wid") || !strcmp(argument, "--shader") ||
+                   !strcmp(argument, "--capture") || !strcmp(argument, "--width") ||
+                   !strcmp(argument, "--height") || !strcmp(argument, "--time") ||
+                   !strcmp(argument, "--benchmark")) {
+            if (!value) {
+                fprintf(stderr, "error: %s requires a value\n", argument);
+                return false;
+            }
+            if (!strcmp(argument, "--wid")) {
+                if (!parse_window_id(value, &options->parent)) {
+                    fprintf(stderr, "error: invalid X11 window ID: %s\n", value);
+                    return false;
+                }
+            } else if (!strcmp(argument, "--shader")) {
+                if (!copy_path(options->shader_path, sizeof(options->shader_path), value)) {
+                    fprintf(stderr, "error: shader path is too long\n");
+                    return false;
+                }
+            } else if (!strcmp(argument, "--capture")) {
+                if (!copy_path(options->capture_path, sizeof(options->capture_path), value)) {
+                    fprintf(stderr, "error: capture path is too long\n");
+                    return false;
+                }
+                options->capture_mode = true;
+            } else if (!strcmp(argument, "--width")) {
+                if (!parse_positive_int(value, &options->width)) {
+                    fprintf(stderr, "error: invalid width: %s\n", value);
+                    return false;
+                }
+            } else if (!strcmp(argument, "--height")) {
+                if (!parse_positive_int(value, &options->height)) {
+                    fprintf(stderr, "error: invalid height: %s\n", value);
+                    return false;
+                }
+            } else if (!strcmp(argument, "--time")) {
+                if (!parse_float_argument(value, &options->fixed_time)) {
+                    fprintf(stderr, "error: invalid time: %s\n", value);
+                    return false;
+                }
+                options->fixed_time_set = true;
+            } else {
+                if (!parse_float_argument(value, &options->benchmark_seconds) ||
+                    options->benchmark_seconds <= 0.0f) {
+                    fprintf(stderr, "error: invalid benchmark duration: %s\n", value);
+                    return false;
+                }
+                options->benchmark_mode = true;
+            }
+            i++;
+        } else {
+            fprintf(stderr, "error: unknown argument: %s\n", argument);
+            return false;
+        }
+    }
+    if (options->capture_mode && options->benchmark_mode) {
+        fprintf(stderr, "error: --capture and --benchmark cannot be combined\n");
+        return false;
+    }
+    if ((options->capture_mode || options->benchmark_mode) && options->parent) {
+        fprintf(stderr, "error: capture/benchmark cannot be combined with --wid\n");
+        return false;
+    }
+    if (options->capture_mode && !options->capture_path[0]) {
+        fprintf(stderr, "error: --capture requires a non-empty output path\n");
+        return false;
+    }
+    if (options->capture_mode || options->benchmark_mode) {
+        if (!options->width) options->width = 320;
+        if (!options->height) options->height = 180;
+    }
+    return true;
+}
+
 int main(int argc, char **argv) {
-    Window parent = 0;
+    RendererOptions options;
+    Window parent;
     char shader_path[PATH_MAX];
     const char *shader_name;
+    float requested_time;
+    int requested_width, requested_height;
+    float benchmark_seconds;
+    bool capture_mode, benchmark_mode, json_output;
+    const char *capture_path;
 
-    for (int i = 1; i < argc; i++) {
-        if (!strcmp(argv[i], "--version")) {
-            printf("xfce-plasma-renderer %s\n", XFCE_PLASMA_VERSION);
-            return 0;
-        }
-        if (!strcmp(argv[i], "--wid") && i + 1 < argc)
-            parent = strtoul(argv[++i], NULL, 0);
+    if (!parse_options(argc, argv, &options)) {
+        print_usage(argv[0]);
+        return 2;
     }
-
-    if (!resolve_shader_path(shader_path, sizeof(shader_path))) {
+    if (options.json_output) SetTraceLogCallback(trace_log_stderr);
+    parent = options.parent;
+    requested_time = options.fixed_time;
+    requested_width = options.width;
+    requested_height = options.height;
+    benchmark_seconds = options.benchmark_seconds;
+    capture_mode = options.capture_mode;
+    benchmark_mode = options.benchmark_mode;
+    json_output = options.json_output;
+    capture_path = options.capture_path;
+    if (options.shader_path[0]) {
+        if (!copy_path(shader_path, sizeof(shader_path), options.shader_path)) {
+            fprintf(stderr, "fatal: shader path is too long\n");
+            return 2;
+        }
+    } else if (!resolve_shader_path(shader_path, sizeof(shader_path))) {
         fprintf(stderr, "fatal: could not resolve active shader path\n");
         return 1;
     }
     shader_name = path_basename(shader_path);
     fprintf(stderr, "active shader: %s\n", shader_path);
 
-    SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE);
+    SetConfigFlags(FLAG_WINDOW_UNDECORATED | FLAG_VSYNC_HINT | FLAG_WINDOW_RESIZABLE |
+        ((capture_mode || benchmark_mode) ? FLAG_WINDOW_HIDDEN : 0));
 
     Display *d = XOpenDisplay(NULL);
     if (d) XSetErrorHandler(ignore_x_error);
-    int width = 800, height = 450;
-    if (d) {
+    int width = requested_width > 0 ? requested_width : 800;
+    int height = requested_height > 0 ? requested_height : 450;
+    if (d && !capture_mode && !benchmark_mode) {
         width = DisplayWidth(d, DefaultScreen(d));
         height = DisplayHeight(d, DefaultScreen(d));
     }
@@ -543,9 +729,11 @@ int main(int argc, char **argv) {
             width = a.width;
             height = a.height;
         } else {
-            SetWindowPosition(0, 0);
-            SetWindowSize(width, height);
-            if (own) set_desktop_hints(d, own);
+            if (!capture_mode && !benchmark_mode) {
+                SetWindowPosition(0, 0);
+                SetWindowSize(width, height);
+                if (own) set_desktop_hints(d, own);
+            }
         }
     }
 
@@ -554,22 +742,30 @@ int main(int argc, char **argv) {
     signal(SIGINT, request_termination);
 
     ManagedShader active_shader;
-    if (!load_shader_file(shader_path, &active_shader) &&
-        !load_fallback_shader(&active_shader)) {
-        if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
-        CloseWindow();
-        if (d) XCloseDisplay(d);
-        return 1;
+    if (!load_shader_file(shader_path, &active_shader)) {
+        if (capture_mode || benchmark_mode) {
+            fprintf(stderr, "fatal: requested shader failed to compile: %s\n", shader_path);
+            if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
+            CloseWindow();
+            if (d) XCloseDisplay(d);
+            return 1;
+        }
+        if (!load_fallback_shader(&active_shader)) {
+            if (glyph_atlas.id != 0U) UnloadTexture(glyph_atlas);
+            CloseWindow();
+            if (d) XCloseDisplay(d);
+            return 1;
+        }
     }
 
-    int shader_watch = open_shader_watch(shader_path);
+    int shader_watch = capture_mode || benchmark_mode ? -1 : open_shader_watch(shader_path);
     int reload_state = 0;
     float reload_start = 0.0f;
     float fade_target = 0.0f;
     float fade_seconds = 2.40f;
     float start_time = (float)GetTime();
     float last_time = start_time;
-    float shader_time = randomized_shader_time();
+    float shader_time = capture_mode || benchmark_mode || options.fixed_time_set ? requested_time : randomized_shader_time();
     fprintf(stderr, "shader phase: %.2f\n", (double)shader_time);
     float fade_out_start = -1.0f;
     int target_fps = read_target_fps();
@@ -579,7 +775,15 @@ int main(int argc, char **argv) {
     int target_height = 0;
     bool low_power = false;
     fprintf(stderr, "performance: fps=%d render-scale=%.2f\n", target_fps, (double)render_scale);
-    SetTargetFPS(target_fps);
+    if (capture_mode || benchmark_mode) SetTargetFPS(240);
+    else SetTargetFPS(target_fps);
+    struct timespec benchmark_start = {0}, frame_start, frame_end;
+    double benchmark_sum = 0.0, benchmark_min = DBL_MAX, benchmark_max = 0.0;
+    unsigned long benchmark_frames = 0, benchmark_warmup = 0;
+    bool benchmark_started = false;
+    double benchmark_elapsed = 0.0;
+    double *benchmark_samples = NULL;
+    size_t benchmark_sample_capacity = 0U;
 
     while (!terminate_requested) {
         if (!parent && IsKeyPressed(KEY_F)) ToggleFullscreen();
@@ -595,7 +799,11 @@ int main(int argc, char **argv) {
         int screen_height = GetScreenHeight();
         int wanted_width = scaled_dimension(screen_width, render_scale);
         int wanted_height = scaled_dimension(screen_height, render_scale);
-        bool scaled_rendering = render_scale < 0.999f;
+        bool scaled_rendering = render_scale < 0.999f || capture_mode || benchmark_mode;
+        if (capture_mode || benchmark_mode) {
+            wanted_width = screen_width = requested_width;
+            wanted_height = screen_height = requested_height;
+        }
 
         if (scaled_rendering &&
             (render_target.id == 0U || target_width != wanted_width || target_height != wanted_height)) {
@@ -603,6 +811,11 @@ int main(int argc, char **argv) {
             render_target = load_color_render_target(wanted_width, wanted_height);
             if (render_target.id == 0U || render_target.texture.id == 0U) {
                 fprintf(stderr, "warning: render-scale framebuffer unavailable; using native resolution\n");
+                if (capture_mode || benchmark_mode) {
+                    fprintf(stderr, "fatal: capture framebuffer unavailable\n");
+                    terminate_requested = 1;
+                    break;
+                }
                 render_target = (RenderTexture2D){0};
                 render_scale = 1.0f;
                 scaled_rendering = false;
@@ -645,7 +858,7 @@ int main(int argc, char **argv) {
         if (dt < 0.0f || dt > 1.0f) dt = 0.0f;
         last_time = real_time;
         float speed = read_wallpaper_speed();
-        shader_time += dt * speed;
+        if (!capture_mode) shader_time += dt * speed;
 
         bool should_use_low_power =
             speed <= 0.0001f && reload_state == 0 &&
@@ -665,6 +878,7 @@ int main(int argc, char **argv) {
             fade = smoothstep01((current_time - start_time) / fade_seconds);
         }
         fade *= reload_fade;
+        if (capture_mode) fade = 1.0f;
 
         set_shader_vec2(active_shader.shader, active_shader.resolution_location, resolution);
         set_shader_float(active_shader.shader, active_shader.time_location, shader_time);
@@ -673,6 +887,7 @@ int main(int argc, char **argv) {
         set_shader_float(active_shader.shader, active_shader.fade_target_location, fade_target);
         set_shader_texture(active_shader.shader, active_shader.glyph_atlas_location, glyph_atlas);
 
+        if (benchmark_mode) (void)clock_gettime(CLOCK_MONOTONIC, &frame_start);
         if (scaled_rendering) {
             BeginTextureMode(render_target);
             ClearBackground(BLACK);
@@ -695,7 +910,72 @@ int main(int argc, char **argv) {
             EndShaderMode();
             EndDrawing();
         }
+
+        if (capture_mode) {
+            Image screenshot = LoadImageFromTexture(render_target.texture);
+            bool saved = screenshot.data != NULL;
+            if (saved) {
+                ImageFlipVertical(&screenshot);
+                saved = ExportImage(screenshot, capture_path);
+            }
+            if (screenshot.data != NULL) UnloadImage(screenshot);
+            if (!saved) {
+                fprintf(stderr, "capture failed: %s\n", capture_path);
+                terminate_requested = 1;
+            }
+            break;
+        }
+        if (benchmark_mode) {
+            (void)clock_gettime(CLOCK_MONOTONIC, &frame_end);
+            double frame_ms = ((double)(frame_end.tv_sec - frame_start.tv_sec) * 1000.0) +
+                ((double)(frame_end.tv_nsec - frame_start.tv_nsec) / 1000000.0);
+            if (benchmark_warmup < 30UL) {
+                benchmark_warmup++;
+            } else {
+                if (!benchmark_started) { benchmark_start = frame_end; benchmark_started = true; }
+                benchmark_sum += frame_ms;
+                if (frame_ms < benchmark_min) benchmark_min = frame_ms;
+                if (frame_ms > benchmark_max) benchmark_max = frame_ms;
+                if (benchmark_frames >= benchmark_sample_capacity) {
+                    size_t new_capacity = benchmark_sample_capacity ? benchmark_sample_capacity * 2U : 256U;
+                    double *new_samples = realloc(benchmark_samples, new_capacity * sizeof(*new_samples));
+                    if (!new_samples) {
+                        fprintf(stderr, "fatal: benchmark sample allocation failed\n");
+                        terminate_requested = 1;
+                        break;
+                    }
+                    benchmark_samples = new_samples;
+                    benchmark_sample_capacity = new_capacity;
+                }
+                benchmark_samples[benchmark_frames] = frame_ms;
+                benchmark_frames++;
+                double elapsed = (double)(frame_end.tv_sec - benchmark_start.tv_sec) +
+                    (double)(frame_end.tv_nsec - benchmark_start.tv_nsec) / 1000000000.0;
+                benchmark_elapsed = elapsed;
+                if (elapsed >= (double)benchmark_seconds) break;
+            }
+        }
     }
+
+    if (benchmark_mode) {
+        double average = benchmark_frames ? benchmark_sum / (double)benchmark_frames : 0.0;
+        double median = 0.0, p95 = 0.0;
+        double elapsed = benchmark_elapsed;
+        double fps = average > 0.0 ? 1000.0 / average : 0.0;
+        if (benchmark_frames) {
+            qsort(benchmark_samples, benchmark_frames, sizeof(*benchmark_samples), compare_doubles);
+            median = benchmark_samples[benchmark_frames / 2U];
+            size_t p95_index = (size_t)ceil((double)benchmark_frames * 0.95) - 1U;
+            if (p95_index >= benchmark_frames) p95_index = benchmark_frames - 1U;
+            p95 = benchmark_samples[p95_index];
+        }
+        if (json_output) {
+            printf("{\"shader\":\"%s\",\"backend\":\"raylib-opengl\",\"timing_source\":\"cpu_frame_wall_clock\",\"resolution\":\"%dx%d\",\"width\":%d,\"height\":%d,\"frames\":%lu,\"elapsed_seconds\":%.3f,\"average_frame_ms\":%.3f,\"median_frame_ms\":%.3f,\"p95_frame_ms\":%.3f,\"min_frame_ms\":%.3f,\"max_frame_ms\":%.3f,\"approx_fps\":%.2f}\n", shader_name, width, height, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
+        } else {
+            printf("shader=%s backend=raylib-opengl timing_source=cpu_frame_wall_clock resolution=%dx%d frames=%lu elapsed_seconds=%.3f average_frame_ms=%.3f median_frame_ms=%.3f p95_frame_ms=%.3f min_frame_ms=%.3f max_frame_ms=%.3f approx_fps=%.2f\n", shader_name, width, height, benchmark_frames, elapsed, average, median, p95, benchmark_min == DBL_MAX ? 0.0 : benchmark_min, benchmark_max, fps);
+        }
+    }
+    free(benchmark_samples);
 
     if (shader_watch >= 0) close(shader_watch);
     if (render_target.id != 0U) unload_color_render_target(render_target);

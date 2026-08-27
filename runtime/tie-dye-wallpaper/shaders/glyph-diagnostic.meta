@@ -3,5 +3,5 @@ display_name=Glyph Diagnostic
 category=Diagnostics
 description=Shows all six built-in glyphs on the top row and atlas-backed glyphs on the bottom row so fallback and cached texture rendering can be verified visually.
 author=xfcePlasma project
-thumbnail=glyph-diagnostic.png
 sort_order=999
+hidden=true

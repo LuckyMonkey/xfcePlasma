@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 renderer="$repo_root/src/renderer/main.c"
-shader="$repo_root/runtime/tie-dye-wallpaper/shaders/hello-kitty-dmx-font.fs"
+shader="$repo_root/runtime/tie-dye-wallpaper/shaders/hello-kitty-dancefloor.fs"
 diagnostic="$repo_root/runtime/tie-dye-wallpaper/shaders/glyph-diagnostic.fs"
 wallpaper_service="$repo_root/systemd/user/tie-dye-wallpaper-mvp.service"
 desktop_service="$repo_root/systemd/user/xfdesktop-transparent.service"
@@ -32,9 +32,10 @@ require 'open_shader_watch\(shader_path\)' "$renderer" 'shader watcher is no lon
 require 'WALLPAPER_GLYPH_ATLAS' "$renderer" 'optional glyph atlas override disappeared'
 require 'using shader built-in glyphs' "$renderer" 'missing-atlas fallback is no longer diagnosed'
 require 'set_shader_float' "$renderer" 'optional shader uniform writes are no longer guarded'
-require 'fallbackGlyph' "$shader" 'DMX shader lost its built-in glyph fallback'
-require 'atlasBackground' "$shader" 'DMX shader no longer distinguishes a real atlas from the fallback texture'
-require 'hash\(vec2\(fi,[[:space:]]*7\.0\)\)[[:space:]]*\*[[:space:]]*6\.0' "$shader" 'DMX shader no longer selects all six glyphs'
+require 'frontKitty' "$shader" 'dancefloor shader lost its front sprite frame'
+require 'profileKitty' "$shader" 'dancefloor shader lost its rotating profile frame'
+require 'backKitty' "$shader" 'dancefloor shader lost its back sprite frame'
+require 'CAT_COUNT=8' "$shader" 'dancefloor shader lost independent multi-sprite choreography'
 require 'fallbackGlyph' "$diagnostic" 'glyph diagnostic no longer renders the built-in glyph path'
 require 'atlasGlyph' "$diagnostic" 'glyph diagnostic no longer renders the atlas path'
 require 'Restart=on-failure' "$wallpaper_service" 'wallpaper service crash recovery disappeared'

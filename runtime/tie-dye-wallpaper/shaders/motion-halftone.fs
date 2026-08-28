@@ -19,7 +19,9 @@ void main(){
     vec2 p=rot*uv;
     p+=0.12*vec2(sin(p.y*3.0+t),cos(p.x*2.7-t));
 
-    float grid=mix(30.0,68.0,0.5+0.5*sin(time*0.045));
+    // Keep the dot language consistently fine; animate density subtly rather than
+    // jumping between two unrelated object scales.
+    float grid=58.0+5.0*sin(time*0.045);
     vec2 cell=floor(p*grid);
     vec2 local=fract(p*grid)-0.5;
     float field=fbm(cell*0.08+vec2(t*0.45,-t*0.31));

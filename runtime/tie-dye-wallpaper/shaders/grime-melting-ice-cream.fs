@@ -70,13 +70,15 @@ void main(){
     }
 
     vec3 slime[3]=vec3[](vec3(.42,1.,.035),vec3(.74,1.,.025),vec3(.08,.86,.42));
-    for(int i=0;i<3;i++){
-        float fi=float(i),speed=.48+fi*.27,phase=fi*2.2;
-        float x=-.45+fi*.45+.035*sin(t*speed+phase);
+    for(int i=0;i<4;i++){
+        float fi=float(i),speed=.39+fi*.19,phase=fi*1.83;
+        float x=-.58+fi*.39+.028*sin(t*speed+phase);
         float top=.30+.025*sin(t*speed*.8+phase);
         vec2 q=p-vec2(x,.03);
-        float outer=scoop(q,phase,speed);
-        float inner=scoop(q*1.045,phase,speed);
+        // Four smaller forms create a readable rhythm of independent paint
+        // objects instead of three oversized blobs.
+        float outer=scoop(q*1.13,phase,speed);
+        float inner=scoop(q*1.18,phase,speed);
         vec3 ink=slime[i];
         col=mix(col,vec3(.003,.005,.004),outer*.98);
         col=mix(col,ink,inner*.98);

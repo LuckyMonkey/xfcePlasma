@@ -29,9 +29,9 @@ void main(){
     col=mix(col,vec3(.10,.035,.028)+n*.035,hearth*.32);
     float coal=ellipse(uv-vec2(0.,-.38),vec2(.72,.13));
     col=mix(col,vec3(.16,.025,.012),coal);
-    for(int i=0;i<3;i++){
+    for(int i=0;i<4;i++){
         float fi=float(i);
-        vec2 lp=uv-vec2(-.34+fi*.34,-.24+fi*.025);
+        vec2 lp=uv-vec2(-.43+fi*.285,-.24+fi*.025);
         lp.x+=lp.y*(fi-.8)*.45;
         float log=ellipse(lp,vec2(.38,.105));
         float end=ellipse(lp-vec2(.32,0.),vec2(.11,.105));

@@ -16,10 +16,10 @@ void main(){
     float t=time*0.055;
     float flow=fbm(vec2(uv.x*0.85+t,uv.y*1.8-t*0.4));
     float ribbon=0.0;
-    for(int i=0;i<5;i++){
+    for(int i=0;i<7;i++){
         float fi=float(i);
         float y=sin(uv.x*(1.25+fi*0.22)+t*(1.1+fi*0.08)+flow*2.4+fi)*0.20+sin(t*0.7+fi)*0.08;
-        ribbon+=0.040/(abs(uv.y-y)+0.030+fi*0.004);
+        ribbon+=0.030/(abs(uv.y-y)+0.022+fi*0.003);
     }
     ribbon=clamp(ribbon*0.20,0.0,1.0);
     vec3 base=mix(vec3(0.005,0.01,0.018),vec3(0.02,0.05,0.08),smoothstep(-0.45,0.5,uv.y));

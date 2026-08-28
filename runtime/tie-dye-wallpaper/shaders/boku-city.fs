@@ -66,13 +66,13 @@ void main(){
     float nearMask=smoothstep(0.008,-0.008,p.y-nearRidge);
     col=mix(col,vec3(0.075,0.012,0.04),nearMask);
 
-    vec2 farCity=buildingLayer(p,-0.36,0.105,0.30,0.007,11.0);
+    vec2 farCity=buildingLayer(p,-0.36,0.082,0.30,0.007,11.0);
     col=mix(col,vec3(0.27,0.035,0.12),farCity.x);
     col+=farCity.y*vec3(1.00,0.36,0.20)*0.38;
-    vec2 midCity=buildingLayer(p,-0.46,0.145,0.43,0.014,37.0);
+    vec2 midCity=buildingLayer(p,-0.46,0.115,0.43,0.014,37.0);
     col=mix(col,vec3(0.13,0.018,0.08),midCity.x);
     col+=midCity.y*vec3(1.00,0.52,0.18)*0.58;
-    vec2 nearCity=buildingLayer(p,-0.56,0.205,0.58,0.024,83.0);
+    vec2 nearCity=buildingLayer(p,-0.56,0.165,0.58,0.024,83.0);
     col=mix(col,vec3(0.035,0.006,0.025),nearCity.x);
     col+=nearCity.y*vec3(1.00,0.34,0.12)*0.72;
 

@@ -102,7 +102,7 @@ void main(){
     }
 
     // Smooth overspray and paint ghosts: irregular, soft-edged rather than pixel noise.
-    for(int i=0;i<12;i++){
+    for(int i=0;i<18;i++){
         float fi=float(i),a=fi*.91;
         vec2 spray=vec2(-.74+fract(sin(fi*18.3)*91.7)*1.48,
             -.42+fract(sin(fi*37.1)*47.2)*.88);

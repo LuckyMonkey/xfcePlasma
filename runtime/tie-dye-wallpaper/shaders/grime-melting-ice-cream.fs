@@ -9,10 +9,10 @@ uniform float fadeTarget;
 float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
 float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<4;i++){v+=a*noise(p);p=p*2.03+11.7;a*=.5;}return v;}
-float circle(vec2 p,float r){return 1.-smoothstep(r,r+.012,length(p));}
-float box(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return 1.-smoothstep(0.,.012,length(max(q,0.))+min(max(q.x,q.y),0.)-r);}
-float line(vec2 p,vec2 a,vec2 b,float w){vec2 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/max(dot(ba,ba),.0001),0.,1.);return 1.-smoothstep(w,w+.012,length(pa-ba*h));}
-float cone(vec2 q){float y=q.y;float half=clamp((y+.02)*.43,0.,.25);return smoothstep(-.025,.0,y)*smoothstep(.74,.70,y)*smoothstep(half+.012,half,abs(q.x));}
+float circle(vec2 p,float r){return 1.-smoothstep(r,r+.004,length(p));}
+float box(vec2 p,vec2 b,float r){vec2 q=abs(p)-b+r;return 1.-smoothstep(0.,.004,length(max(q,0.))+min(max(q.x,q.y),0.)-r);}
+float line(vec2 p,vec2 a,vec2 b,float w){vec2 pa=p-a,ba=b-a;float h=clamp(dot(pa,ba)/max(dot(ba,ba),.0001),0.,1.);return 1.-smoothstep(w,w+.004,length(pa-ba*h));}
+float cone(vec2 q){float y=q.y;float half=clamp((y+.02)*.43,0.,.25);return smoothstep(-.012,.0,y)*smoothstep(.74,.70,y)*smoothstep(half+.006,half,abs(q.x));}
 float scoop(vec2 q,float phase,float speed){
     q.x+=.065*sin(time*speed+phase);
     q.y+=.035*sin(time*speed*.73+phase*1.6);
@@ -67,24 +67,29 @@ void main(){
         float top=.30+.025*sin(t*speed*.8+phase);
         vec2 q=p-vec2(x,.03);
         float outer=scoop(q,phase,speed);
-        float inner=scoop(q,phase+.02,speed);
+        float inner=scoop(q*1.045,phase,speed);
         vec3 ink=slime[i];
-        col=mix(col,vec3(.004,.007,.006),max(outer-inner*.982,0.)*.98);
-        col=mix(col,ink,inner*.97);
+        col=mix(col,vec3(.003,.005,.004),outer*.98);
+        col=mix(col,ink,inner*.98);
+        float shadow=circle(q-vec2(.08,.18),.095)+circle(q-vec2(-.12,.12),.07);
+        col=mix(col,ink*vec3(.48,.42,.55),shadow*.22);
 
-        float coneMask=cone(q-vec2(0.,-.42));
+        vec2 coneSpace=q-vec2(0.,.55);
+        float coneMask=cone(coneSpace);
         col=mix(col,vec3(.105,.025,.075),coneMask*.92);
-        float cross=line(q-vec2(0.,-.42),vec2(-.15,.12),vec2(.15,.45),.008)+line(q-vec2(0.,-.42),vec2(.15,.12),vec2(-.15,.45),.008);
+        float cross=line(coneSpace,vec2(-.15,.12),vec2(.15,.45),.005)+line(coneSpace,vec2(.15,.12),vec2(-.15,.45),.005);
         col=mix(col,vec3(.5,.08,.2),coneMask*cross*.5);
 
-        float len1=.17+.12*(.5+.5*sin(t*speed+phase));
-        float len2=.11+.10*(.5+.5*sin(t*speed*1.35+phase+1.4));
-        float d1=hourglassDrip(q,-.14,top-.02,len1,.029);
-        float d2=hourglassDrip(q,.10,top-.08,len2,.022);
-        col=mix(col,ink,max(d1,d2)*.98);
+        float len1=.22+.16*(.5+.5*sin(t*speed+phase));
+        float len2=.08+.18*(.5+.5*sin(t*speed*1.35+phase+1.4));
+        float len3=.12+.10*(.5+.5*sin(t*speed*.72+phase+2.3));
+        float d1=hourglassDrip(q,-.14,top-.02,len1,.022+.008*fi);
+        float d2=hourglassDrip(q,.10,top-.08,len2,.017+.005*fi);
+        float d3=hourglassDrip(q,.02,top-.12,len3,.012);
+        col=mix(col,ink,max(max(d1,d2),d3)*.98);
         float wet= circle(q-vec2(-.10,.36),.04)+circle(q-vec2(.11,.26),.025);
         col+=wet*vec3(1.,1.,.7)*(.55+.35*sin(t*speed*1.7+phase));
-        col+=d1*vec3(.12,.28,.03)+d2*vec3(.1,.2,.025);
+        col+=d1*vec3(.12,.28,.03)+d2*vec3(.1,.2,.025)+d3*vec3(.08,.18,.02);
     }
 
     // Smooth overspray and paint ghosts: irregular, soft-edged rather than pixel noise.

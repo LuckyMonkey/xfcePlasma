@@ -22,13 +22,16 @@ vec3 hsv(float h,float s,float v) {
 }
 void main() {
     vec2 uv=(gl_FragCoord.xy-.5*resolution)/resolution.y;
-    float t=time*.065;
-    float n=fbm(uv*1.35+vec2(t,-t*.7));
-    vec2 w=uv+.22*vec2(sin(uv.y*2.3+t+n*2.),cos(uv.x*2.1-t+n*2.));
-    float p=sin(w.x*4.7+t*1.7)+sin(w.y*5.3-t*1.3)+sin((w.x+w.y)*3.8+t)+sin(length(w)*7.2-t*1.5);
-    float hue=fract(.54+.12*p+.28*n+t*.28);
-    vec3 ink=hsv(hue,.82,1.);
-    float density=.48+.18*sin(p*.65+n*2.);
+    // Broad, screen-filling color fields: slow drift instead of a fine
+    // grid of equally sized cells, leaving calm areas for desktop icons.
+    float t=time*.055;
+    float n=fbm(uv*.72+vec2(t*.18,-t*.11));
+    vec2 w=uv+.28*vec2(sin(uv.y*1.45+t+n*1.4),cos(uv.x*1.25-t*.8+n));
+    float field=sin(w.x*2.15+t*.75)+sin(w.y*1.7-t*.52);
+    field+=.75*sin((w.x*.72-w.y*1.08)*2.1+t*.35+n*2.0);
+    float hue=fract(.54+.075*field+.18*n+t*.035);
+    vec3 ink=hsv(hue,.78,.96);
+    float density=.42+.13*sin(field*.5+n*1.4);
     float f=clamp(fade,0.,1.);
     float fadedDensity=mix(1.,density,f);
     vec3 fadedInk=mix(vec3(fadeTarget),ink,f);

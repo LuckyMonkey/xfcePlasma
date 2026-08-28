@@ -32,6 +32,15 @@ float hourglassDrip(vec2 p,float x,float top,float length,float width){
     float satellite=circle(p-vec2(x+width*1.4,top-length*.72),width*.55);
     return max(inside*vertical, max(pearl,satellite*.7));
 }
+float paintDrip(vec2 p,float x,float top,float maxLength,float width,float speed,float phase){
+    // A stroke advances only toward the floor during its cycle. Older paint
+    // stays as a dim trail underneath and is covered by the fresh bright drop.
+    float progress=fract(time*speed+phase);
+    float visible=smoothstep(.03,.12,progress)*(1.0-smoothstep(.88,1.0,progress));
+    float trail=hourglassDrip(p,x,top,maxLength,width*.58)*smoothstep(.42,.9,progress)*.34;
+    float fresh=hourglassDrip(p,x,top,maxLength*progress,width)*visible;
+    return trail+fresh;
+}
 
 void main(){
     vec2 uv=gl_FragCoord.xy/resolution;
@@ -80,13 +89,11 @@ void main(){
         float cross=line(coneSpace,vec2(-.15,.12),vec2(.15,.45),.005)+line(coneSpace,vec2(.15,.12),vec2(-.15,.45),.005);
         col=mix(col,vec3(.5,.08,.2),coneMask*cross*.5);
 
-        float len1=.22+.16*(.5+.5*sin(t*speed+phase));
-        float len2=.08+.18*(.5+.5*sin(t*speed*1.35+phase+1.4));
-        float len3=.12+.10*(.5+.5*sin(t*speed*.72+phase+2.3));
-        float d1=hourglassDrip(q,-.14,top-.02,len1,.022+.008*fi);
-        float d2=hourglassDrip(q,.10,top-.08,len2,.017+.005*fi);
-        float d3=hourglassDrip(q,.02,top-.12,len3,.012);
-        col=mix(col,ink,max(max(d1,d2),d3)*.98);
+        float d1=paintDrip(q,-.14,top-.02,.38+.05*fi,.022+.008*fi,.17+.06*fi,phase);
+        float d2=paintDrip(q,.10,top-.08,.29+.04*fi,.017+.005*fi,.28+.07*fi,phase+1.4);
+        float d3=paintDrip(q,.02,top-.12,.22+.03*fi,.012,.11+.04*fi,phase+2.3);
+        float drips=max(max(d1,d2),d3);
+        col=mix(col,ink,drips*.98);
         float wet= circle(q-vec2(-.10,.36),.04)+circle(q-vec2(.11,.26),.025);
         col+=wet*vec3(1.,1.,.7)*(.55+.35*sin(t*speed*1.7+phase));
         col+=d1*vec3(.12,.28,.03)+d2*vec3(.1,.2,.025)+d3*vec3(.08,.18,.02);

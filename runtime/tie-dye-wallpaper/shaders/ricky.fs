@@ -54,7 +54,7 @@ float houndstooth(vec2 tilePoint){
 
 void main(){
     vec2 centered=(gl_FragCoord.xy-0.5*resolution)/resolution.y;
-    vec2 tilePoint=vec2(centered.x,-centered.y)*15.0;
+    vec2 tilePoint=vec2(centered.x,-centered.y)*18.0;
     vec2 cell=floor(tilePoint/4.0);
     float tooth=houndstooth(tilePoint);
 

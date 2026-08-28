@@ -30,7 +30,7 @@ void main(){
 
     vec2 face=rot(uv,0.10*sin(t*0.18));
     vec2 iso=vec2(face.x+face.y*0.38,face.y*0.86-face.x*0.10);
-    float grid=34.0;
+    float grid=42.0;
     vec2 g=floor(iso*grid);
     vec2 f=fract(iso*grid)-0.5;
 
@@ -47,7 +47,7 @@ void main(){
 
     float pop=mix(0.78,1.18,hash(g+beat*0.8));
     vec2 local=rot(f,(floor(h2*4.0)*1.570796)+phase*0.42*step(0.66,h));
-    float tile=box(local,vec2(0.36*pop));
+    float tile=box(local,vec2(0.30*pop));
     float inner=box(local,vec2(0.18*pop));
     float mark=max(lineMask(local,0.035),lineMask(local.yx,0.035))*step(0.72,h2);
     float ink=tile*block;

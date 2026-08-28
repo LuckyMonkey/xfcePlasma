@@ -28,10 +28,11 @@ ORDER=(
     kaleidoscope-tunnel.fs
     aurora-ribbons.fs
     plasma-lava.fs
-    deep-ocean.fs
     red-forest.fs
     boku-city.fs
     ricky.fs
+    hello-kitty-dancefloor.fs
+    grime-signal.fs
 )
 
 label_for() {
@@ -43,10 +44,11 @@ label_for() {
         kaleidoscope-tunnel.fs) printf 'Kaleidoscope Tunnel';;
         aurora-ribbons.fs) printf 'Aurora Ribbons';;
         plasma-lava.fs) printf 'Plasma Lava';;
-        deep-ocean.fs) printf 'Deep Ocean';;
         red-forest.fs) printf 'Red Forest';;
         boku-city.fs) printf 'Boku City';;
         ricky.fs) printf 'Ricky';;
+        hello-kitty-dancefloor.fs) printf 'Hello Kitty Dancefloor';;
+        grime-signal.fs) printf 'Grime Signal';;
         *) basename "$1" .fs | sed 's/-/ /g; s/\b\(.\)/\u\1/g';;
     esac
 }
@@ -98,6 +100,12 @@ metadata_value() {
     if [ -n "$value" ]; then printf '%s\n' "$value"; else printf '%s\n' "$fallback"; fi
 }
 
+is_hidden_shader() {
+    local meta
+    meta=$(shader_metadata_path "$1" 2>/dev/null || true)
+    [ "$(metadata_value "$meta" hidden false)" != true ]
+}
+
 clean_field() {
     printf '%s' "$1" | tr '\t\r\n' '   '
 }
@@ -134,6 +142,7 @@ available() {
     local name
     for name in "${ORDER[@]}"; do
         [ "$name" != tie-dye.fs ] || [ ! -f "$SHADER_DIR/plasma.fs" ] || continue
+        is_hidden_shader "$name" || continue
         shader_path "$name" >/dev/null 2>&1 && printf '%s\n' "$name"
     done
     {
@@ -144,6 +153,7 @@ available() {
         true
     } 2>/dev/null | sort -u | while IFS= read -r name; do
         [ "$name" != tie-dye.fs ] || [ ! -f "$SHADER_DIR/plasma.fs" ] || continue
+        is_hidden_shader "$name" || continue
         is_ordered "$name" || printf '%s\n' "$name"
     done
 }
@@ -262,7 +272,7 @@ choose_gui() {
 }
 
 apply_shader() {
-    local name=$1 src
+    local name=$1 src id selector
     name=$(canonical_shader_name "$name")
     src=$(shader_path "$name" || true)
     [ -f "$src" ] || { notify "Missing shader: $name"; return 1; }
@@ -270,6 +280,14 @@ apply_shader() {
     mkdir -p "$STATE_DIR" "$(dirname "$ACTIVE_SHADER")"
     xfce_plasma_atomic_copy "$src" "$ACTIVE_SHADER"
     xfce_plasma_atomic_write "$STATE_FILE" "$name"
+    id=${name%.fs}
+    case "$id" in
+        ''|[.-]*|*[!A-Za-z0-9._-]*) ;;
+        *)
+            selector=$(printf 'type=shader\nid=%s\n' "$id")
+            xfce_plasma_atomic_write "$XFCE_PLASMA_ACTIVE_SOURCE_FILE" "$selector"
+            ;;
+    esac
     notify "$(label_for "$name")"
 }
 

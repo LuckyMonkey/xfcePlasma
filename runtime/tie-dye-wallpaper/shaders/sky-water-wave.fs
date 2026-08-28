@@ -45,7 +45,7 @@ void main(){
     float depth=smoothstep(waterLine,0.0,uv.y);
     water=mix(waterBase,waterDeep,depth*0.75);
     water+=0.12*sin((uv.x+uv.y)*45.0-time*1.8)*smoothstep(waterLine,0.0,uv.y);
-    water+=0.08*noise(vec2(uv.x*42.0+time*0.35,uv.y*18.0-time*0.12));
+    water+=0.08*noise(vec2(uv.x*58.0+time*0.35,uv.y*26.0-time*0.12));
 
     float foam=1.0-smoothstep(0.0,0.020,abs(uv.y-waterLine));
     foam+=0.35*(1.0-smoothstep(0.0,0.010,abs(uv.y-(waterLine+0.018*sin(uv.x*52.0-time*1.4)))));

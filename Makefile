@@ -12,13 +12,16 @@ RENDERER_SOURCE := src/renderer/main.c
 SETTINGS_UI := $(BUILD_DIR)/xfce-plasma-settings-ui
 SETTINGS_SOURCE := src/settings/main.c
 
-.PHONY: all renderer settings check clean install uninstall doctor \
+.PHONY: all renderer settings thumbnails check clean install uninstall doctor \
 	check-build-deps check-runtime-deps check-deps
 all: check-build-deps $(RENDERER) $(SETTINGS_UI)
 
 renderer: check-build-deps $(RENDERER)
 
 settings: check-build-deps $(SETTINGS_UI)
+
+thumbnails: renderer
+	./bin/xfce-plasma-render-shader --gallery --output-dir assets/thumbnails --update-thumbnails
 
 $(BUILD_DIR):
 	mkdir -p "$@"

@@ -3,7 +3,7 @@ Description=xfcePlasma animated background session
 After=graphical-session.target xfce4-session.target dbus.service
 PartOf=graphical-session.target
 StartLimitIntervalSec=30
-StartLimitBurst=3
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -12,3 +12,8 @@ ExecStart=/usr/bin/nice -n 15 /usr/bin/ionice -c 3 %h/.local/bin/xfce-plasma-bac
 ExecStopPost=%h/.local/bin/xfce-plasma-background cleanup
 KillMode=control-group
 TimeoutStopSec=5
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

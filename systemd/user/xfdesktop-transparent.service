@@ -1,14 +1,17 @@
 [Unit]
-Description=Patched transparent xfdesktop icon layer
+Description=xfcePlasma transparent xfdesktop icon layer
 After=graphical-session.target xfce4-session.target dbus.service tie-dye-wallpaper-mvp.service
 PartOf=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
 
 [Service]
 Type=simple
-Environment=NO_AT_BRIDGE=1
-ExecStartPre=-/usr/bin/pkill -x xfdesktop
-ExecStartPre=/usr/bin/xfconf-query -c xfce4-desktop -p /desktop-icons/style -s 2
-ExecStartPre=/usr/bin/xfconf-query -c xfce4-desktop -p /backdrop/transparent-background -n -t bool -s true
-ExecStart=%h/.local/opt/xfdesktop-transparent/bin/xfdesktop --disable-wm-check
-Restart=always
+ExecStart=%h/.local/bin/start-transparent-xfdesktop-session
+KillMode=control-group
+TimeoutStopSec=5
+Restart=on-failure
 RestartSec=2
+
+[Install]
+WantedBy=graphical-session.target

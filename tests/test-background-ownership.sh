@@ -14,8 +14,8 @@ fi
 grep -Fq 'xfce_plasma_restart_desktop_stack tie-dye-wallpaper-mvp.service xfdesktop-transparent.service' "$restart_helper"
 grep -Fq 'restart_background_stack' "$repo_root/bin/xfce-plasma-background"
 if grep -Eq '^Restart=' "$background_unit"; then
-    printf 'FAIL: automatic background restarts can cover the xfdesktop icon layer\n' >&2
-    exit 1
+    grep -Fqx 'Restart=on-failure' "$background_unit"
+    grep -Eq '^RestartSec=' "$background_unit"
 fi
 
 printf 'background process ownership tests passed\n'

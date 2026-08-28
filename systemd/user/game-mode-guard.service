@@ -1,11 +1,17 @@
 [Unit]
-Description=Desktop game-mode guard for fullscreen games
+Description=xfcePlasma game mode guard
+After=graphical-session.target dbus.service
+PartOf=graphical-session.target
+StartLimitIntervalSec=30
+StartLimitBurst=5
 
 [Service]
 Type=simple
 ExecStart=%h/.local/bin/game-mode-guard
-Restart=always
+KillMode=control-group
+TimeoutStopSec=5
+Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target

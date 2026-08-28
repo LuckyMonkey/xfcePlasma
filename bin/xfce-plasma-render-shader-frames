@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+shader=${1:-}; shift || true
+outdir=''; times='0,5,15,30'; extra=()
+while [ "$#" -gt 0 ]; do case "$1" in --help|-h) printf 'usage: %s SHADER [--times 0,5,15,30] --output-dir DIR [--size WIDTHxHEIGHT]\n' "${0##*/}"; exit 0;; --times) times=${2:?missing times}; shift 2;; --output-dir) outdir=${2:?missing output directory}; shift 2;; --size) extra+=(--size "$2"); shift 2;; *) printf 'unknown option: %s\n' "$1" >&2; exit 2;; esac; done
+[ -n "$shader" ] && [ -n "$outdir" ] || { printf 'shader and --output-dir are required\n' >&2; exit 2; }
+mkdir -p -- "$outdir"; id=$(basename "$shader" .fs); IFS=, read -ra values <<< "$times"
+for value in "${values[@]}"; do
+  case "$value" in ''|*[!0-9.-]*) printf 'invalid timestamp: %s\n' "$value" >&2; exit 2;; esac
+  if [[ "$value" =~ ^[0-9]+$ ]]; then printf -v stamp '%03d' "$value"; else stamp=${value//./_}; fi
+  "$script_dir/xfce-plasma-render-shader" "$shader" --time "$value" "${extra[@]}" --output "$outdir/$id-t${stamp}.png"
+done

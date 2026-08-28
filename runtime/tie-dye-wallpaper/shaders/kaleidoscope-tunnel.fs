@@ -26,8 +26,8 @@ void main(){
     // Every term is even across the mirrored axis, so circles and ribbons meet
     // continuously instead of producing the old horizontal bifocal seam.
     float tunnel=log(r)*7.4-time*0.58;
-    float circles=cos(length(wedge-vec2(0.22,0.10))*42.0-time*0.85);
-    float ribbons=cos(wedge.x*30.0+2.6*sin(tunnel))*cos(wedge.y*34.0);
+    float circles=cos(length(wedge-vec2(0.22,0.10))*54.0-time*0.85);
+    float ribbons=cos(wedge.x*38.0+2.6*sin(tunnel))*cos(wedge.y*43.0);
     float radial=sin(tunnel*2.0)+0.72*cos(tunnel*3.0+mirrored*folds);
     float field=0.48*circles+0.72*ribbons+0.58*radial;
     float light=smoothstep(-0.45,0.82,field);
